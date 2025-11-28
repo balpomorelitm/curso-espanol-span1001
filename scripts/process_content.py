@@ -1,7 +1,4 @@
-"""Content automation pipeline script (Direct API Version).
-
-This script uses direct HTTP requests to Notion to avoid SDK version conflicts.
-"""
+"""Content automation pipeline script (Individual Files Version)."""
 from __future__ import annotations
 
 import os
@@ -47,8 +44,6 @@ def ensure_environment() -> None:
     if missing:
         raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
 
-# --- NUEVA LÓGICA NOTION SIN LIBRERÍA ---
-
 def get_notion_headers() -> Dict[str, str]:
     return {
         "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -57,187 +52,133 @@ def get_notion_headers() -> Dict[str, str]:
     }
 
 def notion_extract_text(prop: Dict) -> str:
-    # Extrae texto plano de propiedades Rich Text o Title
     if not prop: return ""
-    # A veces viene como lista directa o dentro de un objeto
     items = prop.get("rich_text", []) if "rich_text" in prop else prop.get("title", [])
     return "".join([t.get("plain_text", "") for t in items]).strip()
 
 def notion_extract_select(prop: Dict) -> str:
-    # Extrae texto de propiedades Select
     if not prop: return ""
     return prop.get("select", {}).get("name", "") if prop.get("select") else ""
 
 def fetch_ready_pages() -> List[LessonEntry]:
-    print(f"📡 Conectando a Notion (API Directa)... ID: {NOTION_DATABASE_ID}")
+    print(f"📡 Conectando a Notion... ID: {NOTION_DATABASE_ID}")
     url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
-    
     payload = {
         "filter": {
             "property": "Status",
-            "status": {"equals": "Ready to Process"} # Ojo: "status" para propiedad tipo Status
+            "status": {"equals": "Ready to Process"}
         }
     }
-    
     response = requests.post(url, json=payload, headers=get_notion_headers())
-    
     if response.status_code != 200:
         raise Exception(f"Error Notion {response.status_code}: {response.text}")
         
-    data = response.json()
-    results = data.get("results", [])
+    results = response.json().get("results", [])
     print(f"✅ Encontrados {len(results)} registros.")
     
     entries = []
     for page in results:
         props = page.get("properties", {})
-        
-        # Extracción manual segura
         theme = notion_extract_text(props.get("Tema", {})) or "Sin Título"
         raw_content = notion_extract_text(props.get("Raw Content", {}))
         unit = notion_extract_select(props.get("Unidad", {}))
         action_type = notion_extract_select(props.get("Action Type", {})) or "Create Lesson"
-        
         slug_value = slugify(theme)
         
         entries.append(LessonEntry(
-            page_id=page["id"],
-            theme=theme,
-            raw_content=raw_content,
-            unit=unit,
-            action_type=action_type,
-            slug=slug_value
+            page_id=page["id"], theme=theme, raw_content=raw_content,
+            unit=unit, action_type=action_type, slug=slug_value
         ))
-        
     return entries
 
 def update_notion_status(page_ids: List[str]) -> None:
-    print(f"🔄 Actualizando estado de {len(page_ids)} páginas en Notion...")
+    print(f"🔄 Actualizando estado de {len(page_ids)} páginas...")
     headers = get_notion_headers()
-    
     for page_id in page_ids:
         url = f"https://api.notion.com/v1/pages/{page_id}"
-        # Payload para propiedad tipo Status (Kanban nativo de Notion)
-        payload = {
-            "properties": {
-                "Status": {
-                    "status": {"name": "In Review"}
-                }
-            }
-        }
-        res = requests.patch(url, json=payload, headers=headers)
-        if res.status_code != 200:
-            print(f"⚠️ Error actualizando página {page_id}: {res.text}")
+        requests.patch(url, json={"properties": {"Status": {"status": {"name": "In Review"}}}}, headers=headers)
 
-# --- RESTO DEL SCRIPT IGUAL ---
-
-def generate_markdown_content(client: OpenAI, entry: LessonEntry, unit_label: Optional[str] = None) -> str:
-    unit_header = unit_label or entry.unit
-    
+def generate_markdown_content(client: OpenAI, entry: LessonEntry) -> str:
+    # Prompt mejorado para ejercicios interactivos
     if entry.action_type == "Add Exercises":
-        system_prompt = "Eres un experto creador de ejercicios de español (ELE). Crea práctica interactiva con soluciones ocultas."
+        system_prompt = (
+            "Eres un experto en didáctica de lenguas. Creas ejercicios para una web interactiva. "
+            "IMPORTANTE: Genera ejercicios usando el formato específico para el script de autocorrección."
+        )
         user_prompt = (
-            f"Contexto: Unidad {unit_header} - Tema: {entry.theme}\nNotas: {entry.raw_content}\n\n"
-            "Crea 5-10 ejercicios variados (Test, Huecos).\n"
-            "FORMATO: Usa H3 (###). Oculta soluciones así: <details><summary>Solución</summary>RESPUESTA</details>"
+            f"Tema: {entry.theme}\nContenido: {entry.raw_content}\n\n"
+            "Crea 5 preguntas variadas (huecos, traducción, elección).\n"
+            "FORMATO OBLIGATORIO PARA CADA PREGUNTA:\n"
+            "1. Escribe la pregunta/instrucción clara en Negrita.\n"
+            "2. Inmediatamente debajo, pon la solución dentro de <details><summary>Solución</summary>TU_RESPUESTA_AQUI</details>\n"
+            "3. La respuesta dentro de details debe ser SOLO la palabra o frase correcta, sin explicaciones extra dentro del tag.\n"
+            "Ejemplo:\n"
+            "**Traduce 'House':**\n"
+            "<details><summary>Solución</summary>Casa</details>\n\n"
         )
     else:
-        system_prompt = "Eres un profesor de español experto. Crea lecciones explicativas ricas y claras para angloparlantes."
+        system_prompt = "Eres un profesor de español experto. Creas lecciones web divididas en secciones cortas y claras."
         user_prompt = (
-            f"Unidad: {unit_header}\nTema: {entry.theme}\nBase: {entry.raw_content}\n\n"
-            "Escribe la lección en Markdown. Usa tablas para vocabulario. Explica en inglés, ejemplos en español."
-            "NO uses frontmatter."
+            f"Unidad: {entry.unit}\nTema: {entry.theme}\nNotas: {entry.raw_content}\n\n"
+            "Escribe una lección en Markdown muy estructurada.\n"
+            "- Usa subtítulos (##) frecuentes para romper el texto.\n"
+            "- Usa tablas para vocabulario.\n"
+            "- Mantén los párrafos cortos.\n"
+            "NO incluyas frontmatter."
         )
 
     completion = client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
     )
-    body = completion.choices[0].message.content.strip()
-
-    if entry.action_type == "Add Exercises":
-        return body
-
-    return f"---\ntitle: \"{entry.theme}\"\nunit: \"{unit_header}\"\nslug: \"{entry.slug}\"\n---\n\n{body}\n"
-
-def build_unit_zero_content(client: OpenAI, entries: List[LessonEntry]) -> str:
-    sections = []
-    print(f"📦 Procesando Unidad 0 ({len(entries)} partes)...")
-    for entry in entries:
-        print(f"  > Generando: {entry.theme}")
-        full = generate_markdown_content(client, entry, unit_label="Unidad 0")
-        body = full if entry.action_type == "Add Exercises" else full.split("---", 2)[-1].strip()
-        sections.append(f"## {entry.theme}\n\n{body}")
-
-    front = "---\ntitle: \"Unidad 0: Introducción\"\nunit: \"Unidad 0\"\nslug: \"unidad-0-intro\"\n---\n\n"
-    intro = "Bienvenido a la Unidad 0. Fundamentos del español.\n\n"
-    joined = "\n\n---\n\n".join(sections)
-    return f"{front}{intro}{joined}\n"
+    return completion.choices[0].message.content.strip()
 
 def git_ops(repo, pr_title, pr_body):
     subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
     subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], check=True)
-    
-    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    branch = f"content-update-{timestamp}"
-    
+    branch = f"content-update-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     subprocess.run(["git", "checkout", "-b", branch], check=True)
     subprocess.run(["git", "add", "."], check=True)
     subprocess.run(["git", "commit", "-m", pr_title], check=True)
-    subprocess.run(["git", "push", "origin", branch], check=True)
-    
-    repo.create_pull(title=pr_title, body=pr_body, head=branch, base="main")
-    print(f"✅ PR Creado: {branch}")
+    try:
+        subprocess.run(["git", "push", "origin", branch], check=True)
+        repo.create_pull(title=pr_title, body=pr_body, head=branch, base="main")
+        print(f"✅ PR Creado: {branch}")
+    except Exception as e:
+        print(f"⚠️ Error Git: {e}")
 
 def main():
     ensure_environment()
-    
-    # Github Init
     auth = Auth.Token(GITHUB_TOKEN)
-    github = Github(auth=auth)
-    repo = github.get_repo(GITHUB_REPOSITORY)
-    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    repo = Github(auth=auth).get_repo(GITHUB_REPOSITORY)
+    client = OpenAI(api_key=OPENAI_API_KEY)
 
-    try:
-        entries = fetch_ready_pages()
-    except Exception as e:
-        print(f"❌ Error fatal conectando a Notion: {e}")
-        return
+    try: entries = fetch_ready_pages()
+    except Exception as e: return print(f"❌ Error Notion: {e}")
 
-    if not entries:
-        print("📭 No hay contenido listo (Ready to Process).")
-        return
+    if not entries: return print("📭 Nada nuevo.")
 
     CONTENT_DIR.mkdir(parents=True, exist_ok=True)
-    
-    unit_0 = [e for e in entries if "unidad 0" in e.unit.lower()]
-    others = [e for e in entries if "unidad 0" not in e.unit.lower()]
     processed = []
 
-    if unit_0:
-        content = build_unit_zero_content(openai_client, unit_0)
-        (CONTENT_DIR / "unidad-0.md").write_text(content, encoding="utf-8")
-        processed.extend([e.page_id for e in unit_0])
-
-    for entry in others:
-        print(f"📝 Generando: {entry.theme}")
-        content = generate_markdown_content(openai_client, entry)
+    for entry in entries:
+        print(f"📝 Procesando: {entry.theme}")
+        content = generate_markdown_content(client, entry)
         path = CONTENT_DIR / f"{entry.slug}.md"
         
         if entry.action_type == "Add Exercises" and path.exists():
             with path.open("a", encoding="utf-8") as f:
-                f.write(f"\n\n---\n\n### 🏋️ Práctica\n\n{content}")
+                f.write(f"\n\n---\n\n## 🏋️ Práctica Interactiva\n\n{content}")
         else:
-            path.write_text(content, encoding="utf-8")
+            frontmatter = f"---\ntitle: \"{entry.theme}\"\nunit: \"{entry.unit}\"\nslug: \"{entry.slug}\"\n---\n\n"
+            path.write_text(frontmatter + content, encoding="utf-8")
+        
         processed.append(entry.page_id)
 
-    if processed:
-        update_notion_status(processed)
-
+    if processed: update_notion_status(processed)
+    
     if subprocess.check_output(["git", "status", "--porcelain"]).strip():
-        git_ops(repo, "Automated Content Update", "Generated by AI pipeline (Direct API).")
-    else:
-        print("🤷‍♂️ No hay cambios en los archivos.")
+        git_ops(repo, "New Content (Split Lessons)", "Generated individual lessons + Interactive exercises.")
 
 if __name__ == "__main__":
     main()
