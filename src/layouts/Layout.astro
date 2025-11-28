@@ -22,8 +22,9 @@ const hasSidebar = Astro.slots.has('sidebar');
             <p class="text-sm text-slate-600">Lecciones generadas automáticamente desde Notion.</p>
           </div>
           <nav class="hidden gap-3 text-sm font-semibold text-brand-dark sm:flex">
-            <a class="rounded-md px-3 py-2 hover:bg-brand-green/10" href="/">Inicio</a>
-            <a class="rounded-md px-3 py-2 hover:bg-brand-green/10" href="/lessons/">Lecciones</a>
+            <a class="rounded-md px-3 py-2 hover:bg-brand-green/10" href={import.meta.env.BASE_URL}>Inicio</a>
+            {/* Nota: quitamos la barra inicial en 'lessons' para que se sume bien a la base */}
+            <a class="rounded-md px-3 py-2 hover:bg-brand-green/10" href={`${import.meta.env.BASE_URL}/lessons/`}>Lecciones</a>
           </nav>
         </div>
       </header>
