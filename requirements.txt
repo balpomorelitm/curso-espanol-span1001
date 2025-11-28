@@ -2,6 +2,3 @@ notion-client
 openai
 PyGithub
 python-slugify
-requests
-pillow
-
