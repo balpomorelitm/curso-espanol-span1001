@@ -2,81 +2,60 @@
 import { getCollection } from 'astro:content';
 import Layout from '../../layouts/Layout.astro';
 
+// 1. Generamos las rutas estáticas
 export async function getStaticPaths() {
   const lessons = await getCollection('lessons');
-  const paths = lessons.map((lesson) => ({
-    params: { slug: lesson.slug.split('/') },
-    props: { lesson },
+  
+  return lessons.map(entry => ({
+    params: { slug: entry.slug }, 
+    props: { entry },
   }));
-
-  if (lessons.length > 0) {
-    paths.push({
-      params: { slug: [] },
-      props: { lesson: lessons[0] },
-    });
-  }
-
-  return paths;
 }
 
-const { lesson } = Astro.props;
-const { Content } = await lesson.render();
-const allLessons = await getCollection('lessons');
-
-const units = allLessons.reduce((map, entry) => {
-  const unit = entry.data.unit ?? 'Unidad general';
-  if (!map.has(unit)) map.set(unit, []);
-  map.get(unit)?.push(entry);
-  return map;
-}, new Map<string, typeof allLessons[number][]>());
-
-const sortedUnits = Array.from(units.entries()).sort(([a], [b]) => a.localeCompare(b, 'es'));
+// 2. Obtenemos los datos para cada página
+const { entry } = Astro.props;
+const { Content } = await entry.render();
 ---
 
-<Layout title={`${lesson.data.title} | Lecciones`}>
-  <Fragment slot="sidebar">
-    <div class="space-y-4">
-      <div class="space-y-1">
-        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent">Navegación</p>
-        <h2 class="text-lg font-bold text-brand-dark">Unidades</h2>
-        <p class="text-xs text-slate-600">Explora todas las lecciones disponibles.</p>
-      </div>
-      <div class="space-y-3">
-        {sortedUnits.map(([unitName, lessons]) => (
-          <div class="space-y-2">
-            <p class="text-xs font-semibold uppercase tracking-wide text-brand-dark">{unitName}</p>
-            <ul class="space-y-1 text-sm text-brand-dark">
-              {lessons.map((entry) => (
-                <li>
-                  <a
-                    class={`flex items-center gap-2 rounded-md px-2 py-1 hover:bg-brand-green/10 ${
-                      entry.id === lesson.id
-                        ? 'bg-brand-green/10 font-semibold text-brand-dark ring-1 ring-brand-green/30'
-                        : ''
-                    }`}
-                    href={`/lessons/${entry.slug}/`}
-                  >
-                    <span class="h-2 w-2 rounded-full bg-brand-accent"></span>
-                    <span class="flex-1">{entry.data.title}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </div>
-  </Fragment>
+<Layout title={`${entry.data.title} - Curso Español`}>
+  <main class="min-h-screen bg-slate-50 py-12">
+    <article class="max-w-4xl mx-auto bg-white shadow-xl rounded-lg overflow-hidden">
+      
+      {/* Cabecera con imagen (si existe) o colores de marca */}
+      <header class="relative bg-brand-dark text-white p-8 border-b-8 border-brand-green">
+        <div class="relative z-10">
+          <span class="inline-block bg-brand-yellow text-brand-dark text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
+            {entry.data.unit}
+          </span>
+          <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight mb-2">
+            {entry.data.title}
+          </h1>
+        </div>
+        {/* Decoración de fondo */}
+        <div class="absolute top-0 right-0 w-32 h-32 bg-brand-blue opacity-10 rounded-bl-full"></div>
+      </header>
 
-  <article class="max-w-4xl mx-auto px-6 py-10">
-    <header class="mb-8 border-b-4 border-brand-green pb-4">
-      {lesson.data.unit && (
-        <span class="text-brand-accent font-bold uppercase tracking-wider text-sm">{lesson.data.unit}</span>
-      )}
-      <h1 class="text-4xl font-extrabold text-brand-dark mt-2">{lesson.data.title}</h1>
-    </header>
-    <div class="prose prose-slate max-w-none prose-a:text-brand-accent prose-strong:text-brand-dark">
-      <Content />
-    </div>
-  </article>
+      {/* Contenido de la lección */}
+      <div class="px-8 py-10 md:px-12">
+        <div class="prose prose-lg max-w-none 
+          prose-headings:text-brand-green 
+          prose-h3:text-brand-blue 
+          prose-a:text-brand-red prose-a:no-underline hover:prose-a:underline
+          prose-strong:text-brand-brown
+          prose-li:marker:text-brand-yellow">
+          
+          <Content />
+          
+        </div>
+
+        {/* Navegación inferior */}
+        <div class="mt-12 pt-8 border-t border-gray-100 flex justify-between items-center">
+          <a href="/" class="text-brand-blue font-semibold hover:text-brand-dark transition-colors">
+            ← Volver al curso
+          </a>
+        </div>
+      </div>
+
+    </article>
+  </main>
 </Layout>
