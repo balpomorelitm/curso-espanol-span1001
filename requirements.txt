@@ -1,4 +1,4 @@
-notion-client>=2.0.0
+requests
 openai>=1.0.0
 PyGithub>=2.0.0
 python-slugify
