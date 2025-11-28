@@ -1,12 +1,10 @@
-"""Content automation pipeline script.
+"""Content automation pipeline script (Text Only).
 
 This script fetches ready-to-process rows from Notion, generates enriched
-lesson markdown via GPT-4o, creates supporting DALL·E 3 artwork, and opens
-an automated pull request with the changes.
+lesson markdown via GPT-4o, and opens an automated pull request.
 """
 from __future__ import annotations
 
-import base64
 import os
 import subprocess
 from dataclasses import dataclass
@@ -16,7 +14,6 @@ from typing import Dict, List, Optional
 
 from notion_client import Client as NotionClient
 from openai import OpenAI
-from PIL import Image
 from slugify import slugify
 from github import Github
 
@@ -28,7 +25,6 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
 
 CONTENT_DIR = Path("src/content/lessons")
-IMAGES_DIR = Path("public/images")
 
 
 @dataclass
@@ -79,12 +75,19 @@ def fetch_ready_pages(notion: NotionClient) -> List[LessonEntry]:
     entries: List[LessonEntry] = []
     for result in response.get("results", []):
         properties = result.get("properties", {})
-        theme = notion_rich_text_value(properties, "Theme")
+        
+        # Adaptación a tu estructura exacta de Notion
+        # Asegúrate de que los nombres de columnas coincidan con tu Notion
+        theme_prop = properties.get("Tema", {}).get("title", [])
+        theme = "".join([t.get("plain_text", "") for t in theme_prop]) if theme_prop else "Sin Título"
+        
         raw_content = notion_rich_text_value(properties, "Raw Content")
-        unit = notion_select_value(properties, "Unit")
-        action_type = notion_select_value(properties, "Action Type") or "Create"
-        slug_source = notion_rich_text_value(properties, "Slug") or theme
-        slug_value = slugify(slug_source or "lesson")
+        unit = notion_select_value(properties, "Unidad")
+        action_type = notion_select_value(properties, "Action Type") or "Create Lesson"
+        
+        # Generamos slug
+        slug_value = slugify(theme or "lesson")
+        
         entries.append(
             LessonEntry(
                 page_id=result.get("id", ""),
@@ -99,7 +102,7 @@ def fetch_ready_pages(notion: NotionClient) -> List[LessonEntry]:
 
 
 def generate_markdown_content(
-    client: OpenAI, entry: LessonEntry, image_path: Path, unit_label: Optional[str] = None
+    client: OpenAI, entry: LessonEntry, unit_label: Optional[str] = None
 ) -> str:
     unit_header = unit_label or entry.unit
     system_prompt = (
@@ -114,6 +117,7 @@ def generate_markdown_content(
         "Contenido base:\n"
         f"{entry.raw_content}\n\n"
         "Genera una sección en Markdown con un tono educativo, encabezados claros y una lista de ejemplos."
+        "NO incluyas frontmatter (---) ni títulos H1 (#)."
     )
     completion = client.chat.completions.create(
         model="gpt-4o",
@@ -123,42 +127,23 @@ def generate_markdown_content(
         ],
     )
     body = completion.choices[0].message.content.strip()
-    image_web_path = web_image_path(image_path)
 
     frontmatter_lines = [
         "---",
         f"title: \"{entry.theme}\"",
         f"unit: \"{unit_header}\"",
         f"slug: \"{entry.slug}\"",
-        f"image: \"/{image_web_path}\"",
         "---",
         "",
     ]
     frontmatter = "\n".join(frontmatter_lines)
-    image_section = f"![Ilustración de la lección](/" + image_web_path + ")\n\n"
-    return f"{frontmatter}{image_section}{body}\n"
-
-
-def generate_image(client: OpenAI, prompt: str, output_path: Path) -> None:
-    response = client.images.generate(
-        model="dall-e-3",
-        prompt=prompt,
-        size="1024x1024",
-        n=1,
-    )
-    b64_data = response.data[0].b64_json
-    image_bytes = base64.b64decode(b64_data)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "wb") as f:
-        f.write(image_bytes)
-    # Validate image
-    with Image.open(output_path) as img:
-        img.verify()
+    return f"{frontmatter}{body}\n"
 
 
 def update_notion_status(notion: NotionClient, page_ids: List[str]) -> None:
     for page_id in page_ids:
-        notion.pages.update(page_id=page_id, properties={"Status": {"select": {"name": "In Review"}}})
+        # Nota: Ajustado a tu columna 'Status' tipo Status (no Select)
+        notion.pages.update(page_id=page_id, properties={"Status": {"status": {"name": "In Review"}}})
 
 
 def git_has_changes() -> bool:
@@ -179,36 +164,31 @@ def create_branch_and_pr(repo, branch_name: str, pr_title: str, pr_body: str) ->
 
 
 def build_unit_zero_content(
-    client: OpenAI, entries: List[LessonEntry], image_path: Path
+    client: OpenAI, entries: List[LessonEntry]
 ) -> str:
     sections = []
+    print(f"Procesando {len(entries)} entradas para Unidad 0...")
+    
     for entry in entries:
-        content = generate_markdown_content(client, entry, image_path, unit_label="Unidad 0")
-        # Drop frontmatter for aggregated sections
-        body = content.split("---", 2)[-1].strip()
+        print(f"  > Generando: {entry.theme}")
+        # Generamos contenido sin frontmatter
+        content_full = generate_markdown_content(client, entry, unit_label="Unidad 0")
+        # Quitamos el frontmatter para concatenar
+        body = content_full.split("---", 2)[-1].strip()
         sections.append(f"## {entry.theme}\n\n{body}")
 
-    image_web_path = web_image_path(image_path)
     frontmatter = "\n".join(
         [
             "---",
             "title: \"Unidad 0: Introducción\"",
             "unit: \"Unidad 0\"",
             "slug: \"unidad-0-intro\"",
-            f"image: \"/{image_web_path}\"",
             "---",
             "",
         ]
     )
-    header_image = f"![Ilustración de la introducción](/" + image_web_path + ")\n\n"
-    return f"{frontmatter}{header_image}{'\n\n'.join(sections)}\n"
-
-
-def web_image_path(path: Path) -> str:
-    raw = str(path).replace(os.sep, "/")
-    if raw.startswith("public/"):
-        return raw[len("public/") :]
-    return raw
+    intro_text = "Bienvenido a la Unidad 0. Aquí están los fundamentos.\n\n"
+    return f"{frontmatter}{intro_text}{'\n\n---\n\n'.join(sections)}\n"
 
 
 def main() -> None:
@@ -219,40 +199,35 @@ def main() -> None:
     github = Github(GITHUB_TOKEN)
     repo = github.get_repo(GITHUB_REPOSITORY)
 
+    print("--- Consultando Notion ---")
     entries = fetch_ready_pages(notion)
     if not entries:
         print("No ready entries found.")
         return
 
     CONTENT_DIR.mkdir(parents=True, exist_ok=True)
-    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-    unit_zero_entries = [e for e in entries if e.unit.lower() == "unidad 0"]
-    other_entries = [e for e in entries if e.unit.lower() != "unidad 0"]
+    # Filtrar Unidad 0 vs Resto
+    unit_zero_entries = [e for e in entries if "unidad 0" in e.unit.lower()]
+    other_entries = [e for e in entries if "unidad 0" not in e.unit.lower()]
 
     processed_pages: List[str] = []
 
+    # 1. Procesar Unidad 0 (Agrupada)
     if unit_zero_entries:
-        image_path = IMAGES_DIR / "unidad-0-intro.png"
-        generate_image(
-            openai_client,
-            "Vibrant classroom scene introducing Spanish basics with welcoming visuals.",
-            image_path,
-        )
-        unit_zero_content = build_unit_zero_content(openai_client, unit_zero_entries, image_path)
-        output_file = CONTENT_DIR / "unidad-0-intro.md"
+        print("Generando archivo agrupado para Unidad 0...")
+        unit_zero_content = build_unit_zero_content(openai_client, unit_zero_entries)
+        output_file = CONTENT_DIR / "unidad-0.md"
         output_file.write_text(unit_zero_content, encoding="utf-8")
         processed_pages.extend([entry.page_id for entry in unit_zero_entries])
 
+    # 2. Procesar Otras Unidades (Individuales)
     for entry in other_entries:
-        image_path = IMAGES_DIR / f"{entry.slug}.png"
-        generate_image(
-            openai_client,
-            f"Educational illustration for Spanish lesson about {entry.theme} with cultural elements.",
-            image_path,
-        )
-        content = generate_markdown_content(openai_client, entry, image_path)
+        print(f"Generando lección individual: {entry.theme}")
+        content = generate_markdown_content(openai_client, entry)
         output_file = CONTENT_DIR / f"{entry.slug}.md"
+        
+        # Lógica Append si ya existe
         if entry.action_type.lower() == "add exercises" and output_file.exists():
             extra_body = content.split("---", 2)[-1].strip()
             with output_file.open("a", encoding="utf-8") as f:
@@ -262,24 +237,29 @@ def main() -> None:
             output_file.write_text(content, encoding="utf-8")
         processed_pages.append(entry.page_id)
 
+    # 3. Actualizar Notion
     if processed_pages:
         update_notion_status(notion, processed_pages)
 
+    # 4. Gestión de Git
     if not git_has_changes():
         print("No changes detected after processing.")
         return
 
+    # Configurar Git user
     git_run(["git", "config", "user.name", "github-actions[bot]"])
     git_run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"])
 
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     branch_name = f"content-update-{timestamp}"
-    pr_title = "Automated content update"
-    pr_body = "This PR adds generated lesson content and images from the content pipeline."
+    pr_title = "Automated content update (Text Only)"
+    pr_body = "This PR adds generated lesson content from the pipeline."
 
-    create_branch_and_pr(repo, branch_name, pr_title, pr_body)
-    print(f"Created pull request on branch {branch_name}.")
-
+    try:
+        create_branch_and_pr(repo, branch_name, pr_title, pr_body)
+        print(f"Created pull request on branch {branch_name}.")
+    except Exception as e:
+        print(f"Error creating PR: {e}")
 
 if __name__ == "__main__":
     main()
