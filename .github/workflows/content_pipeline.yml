@@ -1,22 +1,22 @@
 name: Content Automation Pipeline
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:        # Botón manual
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */6 * * *'   # Automático cada 6h
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write           # Necesario para hacer git push
+  pull-requests: write      # Necesario para crear PR
 
 jobs:
-  build:
+  process-content:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0    # Importante para que git funcione bien
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -30,10 +30,11 @@ jobs:
 
       - name: Run content pipeline
         env:
+          # Mapeamos tus Secretos de GitHub a las Variables que pide Python
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DB_ID }} # Python pide DATABASE_ID, tu secreto es DB_ID
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          python scripts/process_content.py
+          OPENAI_MODEL: "gpt-4o" # Cambia a "gpt-5.1" aquí cuando quieras
+        run: python scripts/process_content.py
