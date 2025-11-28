@@ -4,3 +4,4 @@ PyGithub
 python-slugify
 requests
 pillow
+replicate
