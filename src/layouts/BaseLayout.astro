@@ -1,0 +1,29 @@
+---
+import '../styles/global.css';
+const { title = 'Curso Español SPAN1001' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <main class="min-h-screen bg-slate-50 text-slate-900">
+      <div class="mx-auto max-w-4xl px-6 py-10 space-y-8">
+        <header class="space-y-2">
+          <p class="text-sm font-semibold uppercase tracking-wide text-sky-600">Content Automation Pipeline</p>
+          <h1 class="text-3xl font-bold">{title}</h1>
+          <p class="text-slate-600">
+            Lecciones generadas automáticamente desde Notion con soporte de GPT-4o y DALL·E 3.
+          </p>
+        </header>
+        <section class="bg-white shadow-sm ring-1 ring-slate-100 rounded-lg p-6">
+          <slot />
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
