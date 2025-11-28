@@ -1,33 +1,31 @@
-"""Content automation pipeline script (Text Only).
+"""Content automation pipeline script (Direct API Version).
 
-This script fetches ready-to-process rows from Notion, generates enriched
-lesson markdown via GPT (configurable model), and opens an automated pull request.
+This script uses direct HTTP requests to Notion to avoid SDK version conflicts.
 """
 from __future__ import annotations
 
 import os
 import subprocess
+import requests
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# Imports corregidos y explícitos
-from notion_client import Client as NotionClient
 from openai import OpenAI
 from slugify import slugify
-from github import Github, Auth 
+from github import Github, Auth
 
-# Configuración de entorno
+# Configuración
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+NOTION_VERSION = "2022-06-28"
 
 CONTENT_DIR = Path("src/content/lessons")
-
 
 @dataclass
 class LessonEntry:
@@ -38,252 +36,208 @@ class LessonEntry:
     action_type: str
     slug: str
 
-
 def ensure_environment() -> None:
-    missing = [
-        name
-        for name, value in {
-            "NOTION_TOKEN": NOTION_TOKEN,
-            "NOTION_DATABASE_ID": NOTION_DATABASE_ID,
-            "OPENAI_API_KEY": OPENAI_API_KEY,
-            "GITHUB_TOKEN": GITHUB_TOKEN,
-            "GITHUB_REPOSITORY": GITHUB_REPOSITORY,
-        }.items()
-        if not value
-    ]
+    missing = [k for k, v in {
+        "NOTION_TOKEN": NOTION_TOKEN,
+        "NOTION_DATABASE_ID": NOTION_DATABASE_ID,
+        "OPENAI_API_KEY": OPENAI_API_KEY,
+        "GITHUB_TOKEN": GITHUB_TOKEN,
+        "GITHUB_REPOSITORY": GITHUB_REPOSITORY
+    }.items() if not v]
     if missing:
-        raise EnvironmentError(f"Missing required environment variables: {', '.join(missing)}")
+        raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
 
+# --- NUEVA LÓGICA NOTION SIN LIBRERÍA ---
 
-def notion_rich_text_value(properties: Dict, field: str) -> str:
-    texts = properties.get(field, {}).get("rich_text", [])
-    return "".join(part.get("plain_text", "") for part in texts).strip()
+def get_notion_headers() -> Dict[str, str]:
+    return {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json"
+    }
 
+def notion_extract_text(prop: Dict) -> str:
+    # Extrae texto plano de propiedades Rich Text o Title
+    if not prop: return ""
+    # A veces viene como lista directa o dentro de un objeto
+    items = prop.get("rich_text", []) if "rich_text" in prop else prop.get("title", [])
+    return "".join([t.get("plain_text", "") for t in items]).strip()
 
-def notion_select_value(properties: Dict, field: str) -> str:
-    return properties.get(field, {}).get("select", {}).get("name", "")
+def notion_extract_select(prop: Dict) -> str:
+    # Extrae texto de propiedades Select
+    if not prop: return ""
+    return prop.get("select", {}).get("name", "") if prop.get("select") else ""
 
-
-def fetch_ready_pages(notion: NotionClient) -> List[LessonEntry]:
-    # CORRECCIÓN PRINCIPAL: Llamada explícita sin diccionarios complejos
-    print(f"Consultando base de datos: {NOTION_DATABASE_ID}...")
+def fetch_ready_pages() -> List[LessonEntry]:
+    print(f"📡 Conectando a Notion (API Directa)... ID: {NOTION_DATABASE_ID}")
+    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
     
-    response = notion.databases.query(
-        database_id=NOTION_DATABASE_ID,
-        filter={
+    payload = {
+        "filter": {
             "property": "Status",
-            "select": {"equals": "Ready to Process"}
+            "status": {"equals": "Ready to Process"} # Ojo: "status" para propiedad tipo Status
         }
-    )
+    }
     
-    entries: List[LessonEntry] = []
-    results = response.get("results", [])
-    print(f"Encontrados {len(results)} registros crudos.")
-
-    for result in results:
-        properties = result.get("properties", {})
+    response = requests.post(url, json=payload, headers=get_notion_headers())
+    
+    if response.status_code != 200:
+        raise Exception(f"Error Notion {response.status_code}: {response.text}")
         
-        # Extracción segura de datos
-        theme_prop = properties.get("Tema", {}).get("title", [])
-        theme = "".join([t.get("plain_text", "") for t in theme_prop]) if theme_prop else "Sin Título"
+    data = response.json()
+    results = data.get("results", [])
+    print(f"✅ Encontrados {len(results)} registros.")
+    
+    entries = []
+    for page in results:
+        props = page.get("properties", {})
         
-        raw_content = notion_rich_text_value(properties, "Raw Content")
-        unit = notion_select_value(properties, "Unidad")
-        action_type = notion_select_value(properties, "Action Type") or "Create Lesson"
+        # Extracción manual segura
+        theme = notion_extract_text(props.get("Tema", {})) or "Sin Título"
+        raw_content = notion_extract_text(props.get("Raw Content", {}))
+        unit = notion_extract_select(props.get("Unidad", {}))
+        action_type = notion_extract_select(props.get("Action Type", {})) or "Create Lesson"
         
-        slug_value = slugify(theme or "lesson")
+        slug_value = slugify(theme)
         
-        entries.append(
-            LessonEntry(
-                page_id=result.get("id", ""),
-                theme=theme,
-                raw_content=raw_content,
-                unit=unit,
-                action_type=action_type,
-                slug=slug_value,
-            )
-        )
+        entries.append(LessonEntry(
+            page_id=page["id"],
+            theme=theme,
+            raw_content=raw_content,
+            unit=unit,
+            action_type=action_type,
+            slug=slug_value
+        ))
+        
     return entries
 
+def update_notion_status(page_ids: List[str]) -> None:
+    print(f"🔄 Actualizando estado de {len(page_ids)} páginas en Notion...")
+    headers = get_notion_headers()
+    
+    for page_id in page_ids:
+        url = f"https://api.notion.com/v1/pages/{page_id}"
+        # Payload para propiedad tipo Status (Kanban nativo de Notion)
+        payload = {
+            "properties": {
+                "Status": {
+                    "status": {"name": "In Review"}
+                }
+            }
+        }
+        res = requests.patch(url, json=payload, headers=headers)
+        if res.status_code != 200:
+            print(f"⚠️ Error actualizando página {page_id}: {res.text}")
 
-def generate_markdown_content(
-    client: OpenAI, entry: LessonEntry, unit_label: Optional[str] = None
-) -> str:
+# --- RESTO DEL SCRIPT IGUAL ---
+
+def generate_markdown_content(client: OpenAI, entry: LessonEntry, unit_label: Optional[str] = None) -> str:
     unit_header = unit_label or entry.unit
     
     if entry.action_type == "Add Exercises":
-        system_prompt = (
-            "Eres un creador experto de materiales didácticos de español (ELE). "
-            "Tu objetivo es crear ejercicios prácticos con soluciones ocultas."
-        )
+        system_prompt = "Eres un experto creador de ejercicios de español (ELE). Crea práctica interactiva con soluciones ocultas."
         user_prompt = (
-            f"Contexto: Unidad {unit_header} - Tema: {entry.theme}\n"
-            f"Notas: {entry.raw_content}\n\n"
-            "Crea 5-10 ejercicios (Selección múltiple, Huecos, Traducción).\n"
-            "FORMATO:\n"
-            "- Usa H3 (###) para títulos.\n"
-            "- Oculta soluciones con <details><summary>Solución</summary>RESPUESTA</details>."
+            f"Contexto: Unidad {unit_header} - Tema: {entry.theme}\nNotas: {entry.raw_content}\n\n"
+            "Crea 5-10 ejercicios variados (Test, Huecos).\n"
+            "FORMATO: Usa H3 (###). Oculta soluciones así: <details><summary>Solución</summary>RESPUESTA</details>"
         )
     else:
-        system_prompt = (
-            "Eres un profesor de español experto. Conviertes notas en lecciones ricas."
-            "REGLAS: Expande el contenido, usa tablas para vocabulario, explica en inglés, ejemplos en español."
-        )
+        system_prompt = "Eres un profesor de español experto. Crea lecciones explicativas ricas y claras para angloparlantes."
         user_prompt = (
             f"Unidad: {unit_header}\nTema: {entry.theme}\nBase: {entry.raw_content}\n\n"
-            "Genera la lección en Markdown sin frontmatter."
+            "Escribe la lección en Markdown. Usa tablas para vocabulario. Explica en inglés, ejemplos en español."
+            "NO uses frontmatter."
         )
 
     completion = client.chat.completions.create(
         model=OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
     )
     body = completion.choices[0].message.content.strip()
 
     if entry.action_type == "Add Exercises":
         return body
 
-    frontmatter = "\n".join([
-        "---",
-        f"title: \"{entry.theme}\"",
-        f"unit: \"{unit_header}\"",
-        f"slug: \"{entry.slug}\"",
-        "---",
-        ""
-    ])
-    return f"{frontmatter}{body}\n"
-
-
-def update_notion_status(notion: NotionClient, page_ids: List[str]) -> None:
-    for page_id in page_ids:
-        try:
-            notion.pages.update(page_id=page_id, properties={"Status": {"status": {"name": "In Review"}}})
-        except Exception as e:
-            print(f"Error actualizando Notion {page_id}: {e}")
-
-
-def git_has_changes() -> bool:
-    result = subprocess.check_output(["git", "status", "--porcelain"])
-    return bool(result.strip())
-
-
-def git_run(args: List[str]) -> None:
-    subprocess.run(args, check=True)
-
-
-def create_branch_and_pr(repo, branch_name: str, pr_title: str, pr_body: str) -> None:
-    git_run(["git", "checkout", "-b", branch_name])
-    git_run(["git", "add", "."])
-    git_run(["git", "commit", "-m", pr_title])
-    try:
-        git_run(["git", "push", "origin", branch_name])
-        repo.create_pull(title=pr_title, body=pr_body, head=branch_name, base="main")
-    except Exception as e:
-        print(f"Error en Git Push/PR: {e}")
-
+    return f"---\ntitle: \"{entry.theme}\"\nunit: \"{unit_header}\"\nslug: \"{entry.slug}\"\n---\n\n{body}\n"
 
 def build_unit_zero_content(client: OpenAI, entries: List[LessonEntry]) -> str:
     sections = []
-    print(f"Procesando {len(entries)} entradas para Unidad 0...")
-    
+    print(f"📦 Procesando Unidad 0 ({len(entries)} partes)...")
     for entry in entries:
         print(f"  > Generando: {entry.theme}")
-        content_full = generate_markdown_content(client, entry, unit_label="Unidad 0")
-        
-        if entry.action_type == "Add Exercises":
-             body = content_full
-        else:
-             body = content_full.split("---", 2)[-1].strip()
-        
+        full = generate_markdown_content(client, entry, unit_label="Unidad 0")
+        body = full if entry.action_type == "Add Exercises" else full.split("---", 2)[-1].strip()
         sections.append(f"## {entry.theme}\n\n{body}")
 
-    frontmatter = "\n".join([
-        "---",
-        "title: \"Unidad 0: Introducción\"",
-        "unit: \"Unidad 0\"",
-        "slug: \"unidad-0-intro\"",
-        "---",
-        ""
-    ])
-    intro_text = "Bienvenido a la Unidad 0. Aquí están los fundamentos.\n\n"
+    front = "---\ntitle: \"Unidad 0: Introducción\"\nunit: \"Unidad 0\"\nslug: \"unidad-0-intro\"\n---\n\n"
+    intro = "Bienvenido a la Unidad 0. Fundamentos del español.\n\n"
+    joined = "\n\n---\n\n".join(sections)
+    return f"{front}{intro}{joined}\n"
+
+def git_ops(repo, pr_title, pr_body):
+    subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
+    subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], check=True)
     
-    # Unión segura fuera del f-string
-    joined_sections = "\n\n---\n\n".join(sections)
-    return f"{frontmatter}{intro_text}{joined_sections}\n"
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    branch = f"content-update-{timestamp}"
+    
+    subprocess.run(["git", "checkout", "-b", branch], check=True)
+    subprocess.run(["git", "add", "."], check=True)
+    subprocess.run(["git", "commit", "-m", pr_title], check=True)
+    subprocess.run(["git", "push", "origin", branch], check=True)
+    
+    repo.create_pull(title=pr_title, body=pr_body, head=branch, base="main")
+    print(f"✅ PR Creado: {branch}")
 
-
-def main() -> None:
+def main():
     ensure_environment()
-
-    # CORRECCIÓN DE WARNING: Autenticación moderna de GitHub
+    
+    # Github Init
     auth = Auth.Token(GITHUB_TOKEN)
     github = Github(auth=auth)
     repo = github.get_repo(GITHUB_REPOSITORY)
-    
-    notion = NotionClient(auth=NOTION_TOKEN)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-    print("--- Iniciando proceso ---")
-    
     try:
-        entries = fetch_ready_pages(notion)
+        entries = fetch_ready_pages()
     except Exception as e:
-        print(f"FATAL ERROR consultando Notion: {e}")
+        print(f"❌ Error fatal conectando a Notion: {e}")
         return
 
     if not entries:
-        print("No se encontraron páginas listas (Ready to Process).")
+        print("📭 No hay contenido listo (Ready to Process).")
         return
 
     CONTENT_DIR.mkdir(parents=True, exist_ok=True)
-
-    unit_zero_entries = [e for e in entries if "unidad 0" in e.unit.lower()]
-    other_entries = [e for e in entries if "unidad 0" not in e.unit.lower()]
-    processed_pages: List[str] = []
-
-    if unit_zero_entries:
-        print("Generando archivo agrupado para Unidad 0...")
-        unit_zero_content = build_unit_zero_content(openai_client, unit_zero_entries)
-        output_file = CONTENT_DIR / "unidad-0.md"
-        output_file.write_text(unit_zero_content, encoding="utf-8")
-        processed_pages.extend([e.page_id for e in unit_zero_entries])
-
-    for entry in other_entries:
-        print(f"Generando: {entry.theme}")
-        content = generate_markdown_content(openai_client, entry)
-        output_file = CONTENT_DIR / f"{entry.slug}.md"
-        
-        if entry.action_type == "Add Exercises" and output_file.exists():
-            print(f"  -> Añadiendo ejercicios a {entry.slug}.md")
-            with output_file.open("a", encoding="utf-8") as f:
-                f.write("\n\n---\n\n### 🏋️ Práctica / Exercises\n\n")
-                f.write(content)
-        else:
-            output_file.write_text(content, encoding="utf-8")
-        processed_pages.append(entry.page_id)
-
-    if processed_pages:
-        update_notion_status(notion, processed_pages)
-
-    if not git_has_changes():
-        print("No hay cambios nuevos para subir.")
-        return
-
-    # Configuración de Git
-    git_run(["git", "config", "user.name", "github-actions[bot]"])
-    git_run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"])
-
-    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    branch_name = f"content-update-{timestamp}"
     
-    try:
-        create_branch_and_pr(repo, branch_name, "Automated Content Update", "Generated by AI pipeline")
-        print(f"✅ Pull Request creado exitosamente en rama: {branch_name}")
-    except Exception as e:
-        print(f"❌ Error creando Pull Request: {e}")
+    unit_0 = [e for e in entries if "unidad 0" in e.unit.lower()]
+    others = [e for e in entries if "unidad 0" not in e.unit.lower()]
+    processed = []
+
+    if unit_0:
+        content = build_unit_zero_content(openai_client, unit_0)
+        (CONTENT_DIR / "unidad-0.md").write_text(content, encoding="utf-8")
+        processed.extend([e.page_id for e in unit_0])
+
+    for entry in others:
+        print(f"📝 Generando: {entry.theme}")
+        content = generate_markdown_content(openai_client, entry)
+        path = CONTENT_DIR / f"{entry.slug}.md"
+        
+        if entry.action_type == "Add Exercises" and path.exists():
+            with path.open("a", encoding="utf-8") as f:
+                f.write(f"\n\n---\n\n### 🏋️ Práctica\n\n{content}")
+        else:
+            path.write_text(content, encoding="utf-8")
+        processed.append(entry.page_id)
+
+    if processed:
+        update_notion_status(processed)
+
+    if subprocess.check_output(["git", "status", "--porcelain"]).strip():
+        git_ops(repo, "Automated Content Update", "Generated by AI pipeline (Direct API).")
+    else:
+        print("🤷‍♂️ No hay cambios en los archivos.")
 
 if __name__ == "__main__":
     main()
