@@ -37,24 +37,26 @@ const sortedUnits = Array.from(units.entries()).sort(([a], [b]) => a.localeCompa
   <Fragment slot="sidebar">
     <div class="space-y-4">
       <div class="space-y-1">
-        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">Navegación</p>
-        <h2 class="text-lg font-bold text-slate-900">Unidades</h2>
+        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent">Navegación</p>
+        <h2 class="text-lg font-bold text-brand-dark">Unidades</h2>
         <p class="text-xs text-slate-600">Explora todas las lecciones disponibles.</p>
       </div>
       <div class="space-y-3">
         {sortedUnits.map(([unitName, lessons]) => (
           <div class="space-y-2">
-            <p class="text-xs font-semibold uppercase tracking-wide text-slate-700">{unitName}</p>
-            <ul class="space-y-1 text-sm text-slate-700">
+            <p class="text-xs font-semibold uppercase tracking-wide text-brand-dark">{unitName}</p>
+            <ul class="space-y-1 text-sm text-brand-dark">
               {lessons.map((entry) => (
                 <li>
                   <a
-                    class={`flex items-center gap-2 rounded-md px-2 py-1 hover:bg-slate-100 ${
-                      entry.id === lesson.id ? 'bg-sky-50 font-semibold text-sky-800 ring-1 ring-sky-100' : ''
+                    class={`flex items-center gap-2 rounded-md px-2 py-1 hover:bg-brand-green/10 ${
+                      entry.id === lesson.id
+                        ? 'bg-brand-green/10 font-semibold text-brand-dark ring-1 ring-brand-green/30'
+                        : ''
                     }`}
                     href={`/lessons/${entry.slug}/`}
                   >
-                    <span class="h-2 w-2 rounded-full bg-sky-500"></span>
+                    <span class="h-2 w-2 rounded-full bg-brand-accent"></span>
                     <span class="flex-1">{entry.data.title}</span>
                   </a>
                 </li>
@@ -66,12 +68,15 @@ const sortedUnits = Array.from(units.entries()).sort(([a], [b]) => a.localeCompa
     </div>
   </Fragment>
 
-  <article class="prose prose-slate max-w-none">
-    <header class="not-prose mb-6 border-b border-slate-200 pb-4">
-      <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">Lección</p>
-      <h1 class="text-3xl font-bold text-slate-900">{lesson.data.title}</h1>
-      {lesson.data.unit && <p class="text-sm text-slate-600">{lesson.data.unit}</p>}
+  <article class="max-w-4xl mx-auto px-6 py-10">
+    <header class="mb-8 border-b-4 border-brand-green pb-4">
+      {lesson.data.unit && (
+        <span class="text-brand-accent font-bold uppercase tracking-wider text-sm">{lesson.data.unit}</span>
+      )}
+      <h1 class="text-4xl font-extrabold text-brand-dark mt-2">{lesson.data.title}</h1>
     </header>
-    <Content />
+    <div class="prose prose-slate max-w-none prose-a:text-brand-accent prose-strong:text-brand-dark">
+      <Content />
+    </div>
   </article>
 </Layout>
