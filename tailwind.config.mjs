@@ -1,3 +1,4 @@
+import typography from '@tailwindcss/typography';
 import { defineConfig } from 'tailwindcss';
 
 export default defineConfig({
@@ -5,5 +6,5 @@ export default defineConfig({
   theme: {
     extend: {},
   },
-  plugins: [],
+  plugins: [typography],
 });

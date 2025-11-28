@@ -1,0 +1,46 @@
+---
+import '../styles/global.css';
+
+const { title = 'Curso Español SPAN1001' } = Astro.props;
+const hasSidebar = Astro.slots.has('sidebar');
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body class="bg-slate-50 text-slate-900">
+    <div class="min-h-screen">
+      <header class="border-b border-slate-200 bg-white/80 backdrop-blur">
+        <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-sky-600">Curso en línea</p>
+            <h1 class="text-2xl font-bold leading-tight text-slate-900">Curso Español SPAN1001</h1>
+            <p class="text-sm text-slate-600">Lecciones generadas automáticamente desde Notion.</p>
+          </div>
+          <nav class="hidden gap-3 text-sm font-semibold text-slate-700 sm:flex">
+            <a class="rounded-md px-3 py-2 hover:bg-slate-100" href="/">Inicio</a>
+            <a class="rounded-md px-3 py-2 hover:bg-slate-100" href="/lessons/">Lecciones</a>
+          </nav>
+        </div>
+      </header>
+
+      <main class="mx-auto max-w-6xl px-6 py-10">
+        <div class={`grid gap-8 ${hasSidebar ? 'lg:grid-cols-[280px_1fr]' : ''}`}>
+          {hasSidebar && (
+            <aside class="self-start rounded-xl border border-slate-200 bg-white/80 p-4 shadow-sm">
+              <slot name="sidebar" />
+            </aside>
+          )}
+
+          <section class="rounded-xl border border-slate-200 bg-white/90 p-6 shadow-sm ring-1 ring-slate-100">
+            <slot />
+          </section>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,77 @@
+---
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+
+export async function getStaticPaths() {
+  const lessons = await getCollection('lessons');
+  const paths = lessons.map((lesson) => ({
+    params: { slug: lesson.slug.split('/') },
+    props: { lesson },
+  }));
+
+  if (lessons.length > 0) {
+    paths.push({
+      params: { slug: [] },
+      props: { lesson: lessons[0] },
+    });
+  }
+
+  return paths;
+}
+
+const { lesson } = Astro.props;
+const { Content } = await lesson.render();
+const allLessons = await getCollection('lessons');
+
+const units = allLessons.reduce((map, entry) => {
+  const unit = entry.data.unit ?? 'Unidad general';
+  if (!map.has(unit)) map.set(unit, []);
+  map.get(unit)?.push(entry);
+  return map;
+}, new Map<string, typeof allLessons[number][]>());
+
+const sortedUnits = Array.from(units.entries()).sort(([a], [b]) => a.localeCompare(b, 'es'));
+---
+
+<Layout title={`${lesson.data.title} | Lecciones`}>
+  <Fragment slot="sidebar">
+    <div class="space-y-4">
+      <div class="space-y-1">
+        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">Navegación</p>
+        <h2 class="text-lg font-bold text-slate-900">Unidades</h2>
+        <p class="text-xs text-slate-600">Explora todas las lecciones disponibles.</p>
+      </div>
+      <div class="space-y-3">
+        {sortedUnits.map(([unitName, lessons]) => (
+          <div class="space-y-2">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-700">{unitName}</p>
+            <ul class="space-y-1 text-sm text-slate-700">
+              {lessons.map((entry) => (
+                <li>
+                  <a
+                    class={`flex items-center gap-2 rounded-md px-2 py-1 hover:bg-slate-100 ${
+                      entry.id === lesson.id ? 'bg-sky-50 font-semibold text-sky-800 ring-1 ring-sky-100' : ''
+                    }`}
+                    href={`/lessons/${entry.slug}/`}
+                  >
+                    <span class="h-2 w-2 rounded-full bg-sky-500"></span>
+                    <span class="flex-1">{entry.data.title}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Fragment>
+
+  <article class="prose prose-slate max-w-none">
+    <header class="not-prose mb-6 border-b border-slate-200 pb-4">
+      <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">Lección</p>
+      <h1 class="text-3xl font-bold text-slate-900">{lesson.data.title}</h1>
+      {lesson.data.unit && <p class="text-sm text-slate-600">{lesson.data.unit}</p>}
+    </header>
+    <Content />
+  </article>
+</Layout>
