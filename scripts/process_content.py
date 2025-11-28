@@ -23,7 +23,6 @@ NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
-# Usa gpt-4o por defecto, pero permite gpt-5.1 si se configura en el YAML
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 CONTENT_DIR = Path("src/content/lessons")
@@ -78,13 +77,11 @@ def fetch_ready_pages(notion: NotionClient) -> List[LessonEntry]:
     for result in response.get("results", []):
         properties = result.get("properties", {})
         
-        # Adaptación a tu estructura de Notion
         theme_prop = properties.get("Tema", {}).get("title", [])
         theme = "".join([t.get("plain_text", "") for t in theme_prop]) if theme_prop else "Sin Título"
         
         raw_content = notion_rich_text_value(properties, "Raw Content")
         unit = notion_select_value(properties, "Unidad")
-        # Por defecto es "Create Lesson" si está vacío
         action_type = notion_select_value(properties, "Action Type") or "Create Lesson"
         
         slug_value = slugify(theme or "lesson")
@@ -107,10 +104,7 @@ def generate_markdown_content(
 ) -> str:
     unit_header = unit_label or entry.unit
     
-    # --- LÓGICA DIFERENCIADA: ¿Lección o Ejercicios? ---
-    
     if entry.action_type == "Add Exercises":
-        # 1. MODO ENTRENADOR (Ejercicios con Feedback)
         system_prompt = (
             "Eres un creador experto de materiales didácticos de español (ELE). "
             "Tu objetivo es crear baterías de ejercicios prácticos que permitan al alumno autoevaluarse."
@@ -136,7 +130,6 @@ def generate_markdown_content(
             "</details>\n"
         )
     else:
-        # 2. MODO PROFESOR (Teoría y Explicación)
         system_prompt = (
             "Eres un profesor de español de talla mundial, experto en enseñar a angloparlantes. "
             "Tu objetivo es convertir notas esquemáticas en lecciones ricas, explicativas y amigables.\n\n"
@@ -155,7 +148,6 @@ def generate_markdown_content(
             "Genera una lección en Markdown. NO incluyas frontmatter (---) ni títulos H1 (#)."
         )
 
-    # Llamada a la API (Usa la variable de entorno para el modelo, ej: gpt-5.1)
     completion = client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[
@@ -165,11 +157,9 @@ def generate_markdown_content(
     )
     body = completion.choices[0].message.content.strip()
 
-    # Si solo añadimos ejercicios, devolvemos el cuerpo limpio
     if entry.action_type == "Add Exercises":
         return body
 
-    # Si es lección nueva, añadimos la cabecera (Frontmatter)
     frontmatter_lines = [
         "---",
         f"title: \"{entry.theme}\"",
@@ -184,7 +174,6 @@ def generate_markdown_content(
 
 def update_notion_status(notion: NotionClient, page_ids: List[str]) -> None:
     for page_id in page_ids:
-        # Cambia el estado a 'In Review' para no repetir
         notion.pages.update(page_id=page_id, properties={"Status": {"status": {"name": "In Review"}}})
 
 
@@ -213,12 +202,10 @@ def build_unit_zero_content(
     
     for entry in entries:
         print(f"  > Generando: {entry.theme}")
-        # Generamos contenido sin frontmatter
         content_full = generate_markdown_content(client, entry, unit_label="Unidad 0")
         
-        # Si es un ejercicio, lo añadimos tal cual, si es lección quitamos frontmatter
         if entry.action_type == "Add Exercises":
-             body = content_full # Ya viene sin frontmatter
+             body = content_full
         else:
              body = content_full.split("---", 2)[-1].strip()
              
@@ -235,7 +222,12 @@ def build_unit_zero_content(
         ]
     )
     intro_text = "Bienvenido a la Unidad 0. Aquí están los fundamentos.\n\n"
-    return f"{frontmatter}{intro_text}{'\n\n---\n\n'.join(sections)}\n"
+    
+    # CORRECCIÓN AQUÍ: Sacamos la unión fuera del f-string para evitar el SyntaxError
+    separator = "\n\n---\n\n"
+    joined_sections = separator.join(sections)
+    
+    return f"{frontmatter}{intro_text}{joined_sections}\n"
 
 
 def main() -> None:
@@ -254,51 +246,40 @@ def main() -> None:
 
     CONTENT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Filtrar Unidad 0 vs Resto
     unit_zero_entries = [e for e in entries if "unidad 0" in e.unit.lower()]
     other_entries = [e for e in entries if "unidad 0" not in e.unit.lower()]
 
     processed_pages: List[str] = []
 
-    # 1. Procesar Unidad 0 (Agrupada)
     if unit_zero_entries:
         print("Generando archivo agrupado para Unidad 0...")
-        # Nota: La unidad 0 siempre se reconstruye entera en este script simple.
-        # Si quisieras 'append' en unidad 0 sería más complejo, pero para intro está bien así.
         unit_zero_content = build_unit_zero_content(openai_client, unit_zero_entries)
         output_file = CONTENT_DIR / "unidad-0.md"
         output_file.write_text(unit_zero_content, encoding="utf-8")
         processed_pages.extend([entry.page_id for entry in unit_zero_entries])
 
-    # 2. Procesar Otras Unidades (Individuales)
     for entry in other_entries:
         print(f"Generando lección individual: {entry.theme}")
         content = generate_markdown_content(openai_client, entry)
         output_file = CONTENT_DIR / f"{entry.slug}.md"
         
-        # Lógica Append si ya existe el archivo y la acción es añadir ejercicios
         if entry.action_type == "Add Exercises" and output_file.exists():
             print(f"  -> Añadiendo ejercicios al final de {entry.slug}.md")
-            # El contenido ya viene limpio (sin frontmatter) gracias a la función generate
             with output_file.open("a", encoding="utf-8") as f:
                 f.write("\n\n---\n\n### 🏋️ Práctica / Exercises\n\n")
                 f.write(content)
         else:
-            # Archivo nuevo (Lección completa)
             output_file.write_text(content, encoding="utf-8")
             
         processed_pages.append(entry.page_id)
 
-    # 3. Actualizar Notion
     if processed_pages:
         update_notion_status(notion, processed_pages)
 
-    # 4. Gestión de Git
     if not git_has_changes():
         print("No changes detected after processing.")
         return
 
-    # Configurar Git user
     git_run(["git", "config", "user.name", "github-actions[bot]"])
     git_run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"])
 
