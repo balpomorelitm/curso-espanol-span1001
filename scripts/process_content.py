@@ -1,7 +1,7 @@
 """Content automation pipeline script (Text Only).
 
 This script fetches ready-to-process rows from Notion, generates enriched
-lesson markdown via GPT-5.1, and opens an automated pull request.
+lesson markdown via GPT (configurable model), and opens an automated pull request.
 """
 from __future__ import annotations
 
@@ -17,12 +17,14 @@ from openai import OpenAI
 from slugify import slugify
 from github import Github
 
-
+# Configuración de entorno
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
+# Usa gpt-4o por defecto, pero permite gpt-5.1 si se configura en el YAML
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 CONTENT_DIR = Path("src/content/lessons")
 
@@ -76,16 +78,15 @@ def fetch_ready_pages(notion: NotionClient) -> List[LessonEntry]:
     for result in response.get("results", []):
         properties = result.get("properties", {})
         
-        # Adaptación a tu estructura exacta de Notion
-        # Asegúrate de que los nombres de columnas coincidan con tu Notion
+        # Adaptación a tu estructura de Notion
         theme_prop = properties.get("Tema", {}).get("title", [])
         theme = "".join([t.get("plain_text", "") for t in theme_prop]) if theme_prop else "Sin Título"
         
         raw_content = notion_rich_text_value(properties, "Raw Content")
         unit = notion_select_value(properties, "Unidad")
+        # Por defecto es "Create Lesson" si está vacío
         action_type = notion_select_value(properties, "Action Type") or "Create Lesson"
         
-        # Generamos slug
         slug_value = slugify(theme or "lesson")
         
         entries.append(
@@ -105,31 +106,58 @@ def generate_markdown_content(
     client: OpenAI, entry: LessonEntry, unit_label: Optional[str] = None
 ) -> str:
     unit_header = unit_label or entry.unit
-    system_prompt = (
-system_prompt = (
-        "Eres un profesor de español de talla mundial, experto en enseñar a angloparlantes y sinohablantes. "
-        "Tu objetivo es tomar notas esquemáticas y convertirlas en lecciones ricas, explicativas y amigables.\n\n"
-        "REGLAS DE ORO:\n"
-        "1. EXPANSIÓN CREATIVA: El contenido base es escueto. Tú debes rellenar los huecos. Si la nota dice 'Hola', tú explicas el contexto cultural, la formalidad y pronunciación.\n"
-        "2. ESTRUCTURA: Usa una introducción breve, el cuerpo de la lección y un resumen final.\n"
-        "3. EJEMPLOS: Por cada regla o palabra nueva, proporciona al menos 3 ejemplos prácticos con traducción al inglés.\n"
-        "4. FORMATO: Usa tablas Markdown para vocabulario. Usa negritas para destacar conceptos clave.\n"
-        "5. IDIOMA: Explica en inglés, pero pon los ejemplos en español.\n"
-        "6. TONO: Motivador, claro, profesional pero cercano."
-        "7. ALCANCE: Cuidado con las frases de ejemplo y demás. Si los contenidos no lo han cubierto, intenta no usarlo; empieza con presente simple y verbos regulares?
-    )
-    )
-    user_prompt = (
-        f"Unidad: {unit_header}\n"
-        f"Tema: {entry.theme}\n"
-        f"Acción: {entry.action_type}\n"
-        "Contenido base:\n"
-        f"{entry.raw_content}\n\n"
-        "Genera una sección en Markdown con un tono educativo, encabezados claros y una lista de ejemplos."
-        "NO incluyas frontmatter (---) ni títulos H1 (#)."
-    )
+    
+    # --- LÓGICA DIFERENCIADA: ¿Lección o Ejercicios? ---
+    
+    if entry.action_type == "Add Exercises":
+        # 1. MODO ENTRENADOR (Ejercicios con Feedback)
+        system_prompt = (
+            "Eres un creador experto de materiales didácticos de español (ELE). "
+            "Tu objetivo es crear baterías de ejercicios prácticos que permitan al alumno autoevaluarse."
+        )
+        user_prompt = (
+            f"Contexto: Unidad {unit_header} - Tema: {entry.theme}\n"
+            f"Notas del tema: {entry.raw_content}\n\n"
+            "Genera una batería de 5 a 10 ejercicios siguiendo esta progresión:\n"
+            "1. RECONOCIMIENTO (Selección múltiple / Verdadero o Falso).\n"
+            "2. PRÁCTICA (Rellenar huecos / Relacionar).\n"
+            "3. PRODUCCIÓN (Traducir o completar frases).\n\n"
+            "REGLAS CRÍTICAS DE FORMATO:\n"
+            "- Usa H3 (###) para titular cada bloque de ejercicios.\n"
+            "- IMPORTANTE: Debes incluir la solución y una breve explicación del error común.\n"
+            "- Oculta la solución usando el tag <details> de HTML para que sea interactivo.\n\n"
+            "Ejemplo de formato requerido:\n"
+            "**1. Traduce: 'Good morning'**\n"
+            "<details>\n"
+            "<summary>Ver Solución</summary>\n"
+            "\n"
+            "**Buenos días**\n"
+            "> Nota: Se usa hasta el mediodía.\n"
+            "</details>\n"
+        )
+    else:
+        # 2. MODO PROFESOR (Teoría y Explicación)
+        system_prompt = (
+            "Eres un profesor de español de talla mundial, experto en enseñar a angloparlantes. "
+            "Tu objetivo es convertir notas esquemáticas en lecciones ricas, explicativas y amigables.\n\n"
+            "REGLAS DE ORO:\n"
+            "1. EXPANSIÓN CREATIVA: Rellena los huecos. Explica el contexto cultural y pronunciación.\n"
+            "2. ESTRUCTURA: Introducción breve, cuerpo de la lección y resumen.\n"
+            "3. EJEMPLOS: Proporciona 3 ejemplos prácticos con traducción al inglés por cada regla.\n"
+            "4. FORMATO: Usa tablas Markdown para vocabulario. Negritas para conceptos clave.\n"
+            "5. IDIOMA: Explica en inglés, ejemplos en español.\n"
+            "6. ALCANCE: Empieza con presente simple y verbos regulares si no se especifica otra cosa."
+        )
+        user_prompt = (
+            f"Unidad: {unit_header}\n"
+            f"Tema: {entry.theme}\n"
+            f"Contenido base:\n{entry.raw_content}\n\n"
+            "Genera una lección en Markdown. NO incluyas frontmatter (---) ni títulos H1 (#)."
+        )
+
+    # Llamada a la API (Usa la variable de entorno para el modelo, ej: gpt-5.1)
     completion = client.chat.completions.create(
-        model="gpt-5.1",
+        model=OPENAI_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -137,6 +165,11 @@ system_prompt = (
     )
     body = completion.choices[0].message.content.strip()
 
+    # Si solo añadimos ejercicios, devolvemos el cuerpo limpio
+    if entry.action_type == "Add Exercises":
+        return body
+
+    # Si es lección nueva, añadimos la cabecera (Frontmatter)
     frontmatter_lines = [
         "---",
         f"title: \"{entry.theme}\"",
@@ -151,7 +184,7 @@ system_prompt = (
 
 def update_notion_status(notion: NotionClient, page_ids: List[str]) -> None:
     for page_id in page_ids:
-        # Nota: Ajustado a tu columna 'Status' tipo Status (no Select)
+        # Cambia el estado a 'In Review' para no repetir
         notion.pages.update(page_id=page_id, properties={"Status": {"status": {"name": "In Review"}}})
 
 
@@ -182,8 +215,13 @@ def build_unit_zero_content(
         print(f"  > Generando: {entry.theme}")
         # Generamos contenido sin frontmatter
         content_full = generate_markdown_content(client, entry, unit_label="Unidad 0")
-        # Quitamos el frontmatter para concatenar
-        body = content_full.split("---", 2)[-1].strip()
+        
+        # Si es un ejercicio, lo añadimos tal cual, si es lección quitamos frontmatter
+        if entry.action_type == "Add Exercises":
+             body = content_full # Ya viene sin frontmatter
+        else:
+             body = content_full.split("---", 2)[-1].strip()
+             
         sections.append(f"## {entry.theme}\n\n{body}")
 
     frontmatter = "\n".join(
@@ -225,6 +263,8 @@ def main() -> None:
     # 1. Procesar Unidad 0 (Agrupada)
     if unit_zero_entries:
         print("Generando archivo agrupado para Unidad 0...")
+        # Nota: La unidad 0 siempre se reconstruye entera en este script simple.
+        # Si quisieras 'append' en unidad 0 sería más complejo, pero para intro está bien así.
         unit_zero_content = build_unit_zero_content(openai_client, unit_zero_entries)
         output_file = CONTENT_DIR / "unidad-0.md"
         output_file.write_text(unit_zero_content, encoding="utf-8")
@@ -236,14 +276,17 @@ def main() -> None:
         content = generate_markdown_content(openai_client, entry)
         output_file = CONTENT_DIR / f"{entry.slug}.md"
         
-        # Lógica Append si ya existe
-        if entry.action_type.lower() == "add exercises" and output_file.exists():
-            extra_body = content.split("---", 2)[-1].strip()
+        # Lógica Append si ya existe el archivo y la acción es añadir ejercicios
+        if entry.action_type == "Add Exercises" and output_file.exists():
+            print(f"  -> Añadiendo ejercicios al final de {entry.slug}.md")
+            # El contenido ya viene limpio (sin frontmatter) gracias a la función generate
             with output_file.open("a", encoding="utf-8") as f:
-                f.write("\n\n### Ejercicios adicionales\n\n")
-                f.write(extra_body)
+                f.write("\n\n---\n\n### 🏋️ Práctica / Exercises\n\n")
+                f.write(content)
         else:
+            # Archivo nuevo (Lección completa)
             output_file.write_text(content, encoding="utf-8")
+            
         processed_pages.append(entry.page_id)
 
     # 3. Actualizar Notion
@@ -261,8 +304,8 @@ def main() -> None:
 
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     branch_name = f"content-update-{timestamp}"
-    pr_title = "Automated content update (Text Only)"
-    pr_body = "This PR adds generated lesson content from the pipeline."
+    pr_title = "Automated content update"
+    pr_body = "This PR adds generated lesson content and exercises."
 
     try:
         create_branch_and_pr(repo, branch_name, pr_title, pr_body)
