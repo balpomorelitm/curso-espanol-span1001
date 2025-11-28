@@ -36,5 +36,5 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          OPENAI_MODEL: "gpt-4o" # Cambia a "gpt-5.1" aquí cuando quieras
+          OPENAI_MODEL: "gpt-5.1" # Cambia a "gpt-5.1" aquí cuando quieras
         run: python scripts/process_content.py
