@@ -1,7 +1,7 @@
 """Content automation pipeline script (Text Only).
 
 This script fetches ready-to-process rows from Notion, generates enriched
-lesson markdown via GPT-4o, and opens an automated pull request.
+lesson markdown via GPT-5.1, and opens an automated pull request.
 """
 from __future__ import annotations
 
@@ -120,7 +120,7 @@ def generate_markdown_content(
         "NO incluyas frontmatter (---) ni títulos H1 (#)."
     )
     completion = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5.1",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
