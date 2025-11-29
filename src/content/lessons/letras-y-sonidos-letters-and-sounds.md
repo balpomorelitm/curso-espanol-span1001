@@ -2,6 +2,8 @@
 title: "Letras y Sonidos / Letters and Sounds"
 unit: "Unidad 0"
 slug: "letras-y-sonidos-letters-and-sounds"
+exercise: true
+parentUnitSlug: "unidad-0"
 ---
 
 **1. Completa con B o V: "El __________ino toca la guitarra."**

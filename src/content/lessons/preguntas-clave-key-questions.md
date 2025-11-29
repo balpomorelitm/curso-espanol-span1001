@@ -2,6 +2,8 @@
 title: "Preguntas Clave / Key Questions"
 unit: "Unidad 0"
 slug: "preguntas-clave-key-questions"
+exercise: true
+parentUnitSlug: "unidad-0"
 ---
 
 **1. Completa la frase en español: "______ en español?" (How do you say it in Spanish?)**  

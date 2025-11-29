@@ -2,6 +2,8 @@
 title: "Saludos y Despedidas / Greetings and Farewells"
 unit: "Unidad 0"
 slug: "saludos-y-despedidas-greetings-and-farewells"
+exercise: true
+parentUnitSlug: "unidad-0"
 ---
 
 **1. Completa el saludo adecuado: “______ días, profesora García.”**  
