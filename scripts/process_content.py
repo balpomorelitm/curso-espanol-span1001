@@ -99,22 +99,34 @@ def update_notion_status(page_ids: List[str]) -> None:
         requests.patch(url, json={"properties": {"Status": {"status": {"name": "In Review"}}}}, headers=headers)
 
 def generate_markdown_content(client: OpenAI, entry: LessonEntry) -> str:
-    # --- MODO 1: ENTRENADOR (Solo Ejercicios) ---
+    # --- MODO 1: ENTRENADOR PRO (JSON DATA) ---
     if entry.action_type == "Add Exercises":
         system_prompt = (
-            "Eres un experto en didáctica de lenguas. Creas ejercicios para una web interactiva. "
-            "IMPORTANTE: Genera ejercicios usando el formato específico para el script de autocorrección."
+            "You are an expert educational software architect for Spanish (ELE). "
+            "Your goal is to generate structured DATA for interactive exercises, not just text. "
+            "Output ONLY valid JSON."
         )
         user_prompt = (
-            f"Tema: {entry.theme}\nContenido: {entry.raw_content}\n\n"
-            "Crea 5 preguntas variadas (huecos, traducción, elección).\n"
-            "FORMATO OBLIGATORIO PARA CADA PREGUNTA:\n"
-            "1. Escribe la pregunta/instrucción clara en Negrita.\n"
-            "2. Inmediatamente debajo, pon la solución dentro de <details><summary>Solución</summary>TU_RESPUESTA_AQUI</details>\n"
-            "3. La respuesta dentro de details debe ser SOLO la palabra o frase correcta, sin explicaciones extra dentro del tag.\n"
-            "Ejemplo:\n"
-            "**Traduce 'House':**\n"
-            "<details><summary>Solución</summary>Casa</details>\n\n"
+            f"Topic: {entry.theme}\nContent Notes: {entry.raw_content}\n\n"
+            "Create an interactive exercise in JSON format. Choose the best type for this topic:\n"
+            "OPTIONS:\n"
+            "1. 'fill_gaps' (Grammar/Conjugation)\n"
+            "2. 'matching' (Vocabulary definitions or collocations)\n"
+            "3. 'flashcards' (Vocabulary memorization)\n"
+            "4. 'multiple_choice' (Reading comprehension)\n\n"
+            "REQUIREMENTS:\n"
+            "1. 'set_a': 10 items for the main exercise.\n"
+            "2. 'set_b': 10 EXTRA items for the 'Try Again' feature.\n"
+            "3. If vocabulary, include 'icon' field (use Google Material Symbols names, snake_case).\n\n"
+            "JSON SCHEMA:\n"
+            "{\n"
+            "  \"type\": \"fill_gaps\" | \"matching\" | \"flashcards\",\n"
+            "  \"title\": \"Exercise Title\",\n"
+            "  \"instruction\": \"What the student must do\",\n"
+            "  \"set_a\": [ {\"q\": \"Question/Term\", \"a\": \"Answer/Definition\", \"icon\": \"optional_icon_name\"} ],\n"
+            "  \"set_b\": [ ...same structure... ]\n"
+            "}\n"
+            "Output ONLY the JSON string. No markdown formatting like ```json."
         )
 
     # --- MODO 2: PROFESOR ESTRELLA (Lección Teórica) ---
@@ -144,7 +156,17 @@ def generate_markdown_content(client: OpenAI, entry: LessonEntry) -> str:
         model=OPENAI_MODEL,
         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
     )
-    return completion.choices[0].message.content.strip()
+    
+    content = completion.choices[0].message.content.strip()
+    
+    # Limpieza si GPT pone bloques de código
+    if content.startswith("```json"): content = content.replace("```json", "").replace("```", "")
+    
+    # Si es ejercicio, lo envolvemos en un bloque especial para que Astro lo detecte
+    if entry.action_type == "Add Exercises":
+        return f"\n\n<div class='exercise-data' style='display:none;'>{content}</div>\n\n"
+    
+    return content
 
 def git_ops(repo, pr_title, pr_body):
     subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
