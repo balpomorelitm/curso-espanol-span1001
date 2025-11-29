@@ -234,3 +234,199 @@ const practiceHeading = headings.find(h => h.text.includes("Práctica") || h.tex
     });
   }
 </script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    renderAdvancedExercises();
+  });
+  
+  renderAdvancedExercises();
+
+  function renderAdvancedExercises() {
+    const dataBlocks = document.querySelectorAll('.exercise-data');
+    
+    dataBlocks.forEach((block, index) => {
+      try {
+        const data = JSON.parse(block.textContent);
+        const container = document.createElement('div');
+        container.id = `app-ex-${index}`;
+        container.className = "my-10 p-6 bg-white rounded-xl shadow-lg border-t-4 border-brand-blue";
+        
+        // Inicializar el ejercicio con el Set A
+        mountExercise(container, data, 'set_a');
+        
+        block.parentNode.insertBefore(container, block);
+      } catch (e) {
+        console.error("Error parsing exercise data", e);
+      }
+    });
+  }
+
+  function mountExercise(container, data, activeSetKey) {
+    const items = data[activeSetKey];
+    const isSetA = activeSetKey === 'set_a';
+    
+    // Header
+    let html = `
+      <div class="flex justify-between items-start mb-6">
+        <div>
+          <h3 class="text-xl font-bold text-brand-dark flex items-center gap-2">
+            <span class="material-symbols-outlined text-brand-blue">fitness_center</span>
+            ${data.title}
+          </h3>
+          <p class="text-slate-500 text-sm mt-1">${data.instruction}</p>
+        </div>
+        <button onclick="switchSet('${container.id}', '${isSetA ? 'set_b' : 'set_a'}')" 
+          class="text-xs font-bold px-3 py-1 bg-brand-yellow/20 text-brand-brown rounded-full hover:bg-brand-yellow/40 transition">
+          ${isSetA ? '🔄 Probar Versión B' : '↩️ Volver a Versión A'}
+        </button>
+      </div>
+    `;
+
+    // Renderizar según tipo
+    if (data.type === 'fill_gaps') {
+      html += renderFillGaps(items, container.id);
+    } else if (data.type === 'matching') {
+      html += renderMatching(items, container.id);
+    } else if (data.type === 'flashcards') {
+      html += renderFlashcards(items, container.id);
+    }
+
+    container.innerHTML = html;
+    
+    // Re-attach events (necesario porque usamos innerHTML)
+    // Guardamos los datos en el DOM para recuperarlos al cambiar de set
+    container.dataset.jsonData = JSON.stringify(data);
+  }
+
+  // --- COMPONENTES DE EJERCICIOS ---
+
+  // 1. FILL IN THE GAPS (Huecos)
+  function renderFillGaps(items, id) {
+    let html = `<div class="space-y-4">`;
+    items.forEach((item, i) => {
+      // Reemplazar '___' con input
+      const parts = item.q.split('___');
+      const inputHtml = `<input type="text" data-ans="${item.a}" class="mx-2 px-2 py-1 border-b-2 border-slate-300 focus:border-brand-blue outline-none bg-slate-50 text-center font-bold w-32" placeholder="?">`;
+      
+      html += `
+        <div class="p-3 bg-slate-50 rounded-lg flex items-center gap-3 exercise-row">
+          ${item.icon ? `<span class="material-symbols-outlined text-slate-400">${item.icon}</span>` : ''}
+          <p class="leading-loose text-lg text-slate-700">
+            ${parts.join(inputHtml)}
+          </p>
+          <span class="feedback-icon material-symbols-outlined opacity-0 ml-auto">check_circle</span>
+        </div>
+      `;
+    });
+    html += `
+      <div class="mt-6 text-center">
+        <button onclick="checkFillGaps('${id}')" class="px-6 py-3 bg-brand-green text-white font-bold rounded-lg shadow-md hover:translate-y-[-2px] transition">
+          ✅ Corregir Todo
+        </button>
+      </div>
+    </div>`;
+    return html;
+  }
+
+  // 2. MATCHING (Relacionar Columnas - Estilo Grid Clickable)
+  function renderMatching(items, id) {
+    // Mezclar respuestas
+    const answers = [...items].sort(() => Math.random() - 0.5);
+    
+    let html = `<div class="grid grid-cols-2 gap-8 matching-game" id="${id}-match">`;
+    
+    // Columna Izquierda (Preguntas)
+    html += `<div class="space-y-3">`;
+    items.forEach((item, i) => {
+      html += `
+        <button onclick="selectMatch('${id}', 'q', ${i})" class="match-card q-card w-full text-left p-4 bg-white border-2 border-slate-200 rounded-xl hover:border-brand-blue transition relative" data-idx="${i}">
+          <div class="font-bold text-brand-dark">${item.q}</div>
+        </button>
+      `;
+    });
+    html += `</div>`;
+
+    // Columna Derecha (Respuestas)
+    html += `<div class="space-y-3">`;
+    answers.forEach((item, i) => {
+      // Buscamos el índice original para saber cuál es su pareja
+      const originalIndex = items.findIndex(x => x.a === item.a);
+      html += `
+        <button onclick="selectMatch('${id}', 'a', ${originalIndex})" class="match-card a-card w-full text-left p-4 bg-slate-50 border-2 border-slate-200 rounded-xl hover:border-brand-green transition" data-idx="${originalIndex}">
+          ${item.icon ? `<span class="material-symbols-outlined text-2xl mb-1 block text-brand-primary">${item.icon}</span>` : ''}
+          <div class="text-slate-600">${item.a}</div>
+        </button>
+      `;
+    });
+    html += `</div></div>`;
+    return html;
+  }
+
+  // --- LÓGICA GLOBAL (Window functions para onclicks) ---
+
+  window.switchSet = (containerId, setKey) => {
+    const container = document.getElementById(containerId);
+    const data = JSON.parse(container.dataset.jsonData);
+    mountExercise(container, data, setKey);
+  };
+
+  window.checkFillGaps = (containerId) => {
+    const container = document.getElementById(containerId);
+    const inputs = container.querySelectorAll('input');
+    
+    inputs.forEach(input => {
+      const userVal = input.value.trim().toLowerCase();
+      const correctVal = input.dataset.ans.toLowerCase();
+      const row = input.closest('.exercise-row');
+      const icon = row.querySelector('.feedback-icon');
+      
+      if(userVal === correctVal) {
+        input.classList.add('text-green-600', 'border-green-500');
+        icon.innerText = 'check_circle';
+        icon.className = 'feedback-icon material-symbols-outlined text-green-500 opacity-100 ml-auto transition';
+      } else {
+        input.classList.add('text-red-500', 'border-red-300');
+        icon.innerText = 'cancel';
+        icon.className = 'feedback-icon material-symbols-outlined text-red-400 opacity-100 ml-auto transition';
+      }
+    });
+  };
+
+  // Estado simple para el juego de Matching
+  let selectedQ = null;
+  
+  window.selectMatch = (containerId, type, idx) => {
+    const container = document.getElementById(containerId);
+    
+    if (type === 'q') {
+      // Limpiar selección previa
+      container.querySelectorAll('.q-card').forEach(el => el.classList.remove('border-brand-blue', 'bg-blue-50'));
+      // Seleccionar actual
+      const card = container.querySelector(`.q-card[data-idx="${idx}"]`);
+      card.classList.add('border-brand-blue', 'bg-blue-50');
+      selectedQ = idx;
+    } 
+    
+    if (type === 'a') {
+      if (selectedQ === null) return; // No hay pregunta seleccionada
+      
+      const cardA = container.querySelector(`.a-card[data-idx="${idx}"]`);
+      const cardQ = container.querySelector(`.q-card[data-idx="${selectedQ}"]`);
+      
+      if (selectedQ === idx) {
+        // MATCH CORRECTO
+        cardQ.classList.replace('border-brand-blue', 'border-green-500');
+        cardQ.classList.add('bg-green-50', 'opacity-50', 'pointer-events-none');
+        cardA.classList.replace('border-slate-200', 'border-green-500');
+        cardA.classList.add('bg-green-50', 'opacity-50', 'pointer-events-none');
+        selectedQ = null;
+      } else {
+        // MATCH INCORRECTO (Shake effect)
+        cardA.classList.add('animate-pulse', 'border-red-400');
+        setTimeout(() => cardA.classList.remove('animate-pulse', 'border-red-400'), 500);
+      }
+    }
+  };
+</script>
