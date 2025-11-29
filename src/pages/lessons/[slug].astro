@@ -11,142 +11,224 @@ export async function getStaticPaths() {
   }));
 }
 
-// 2. Obtener contenido y encabezados para la Tabla de Contenidos (TOC)
+// 2. Obtener contenido y encabezados
 const { entry } = Astro.props;
 const { Content, headings } = await entry.render();
+
+// Encontrar si hay sección de práctica para el botón directo
+const practiceHeading = headings.find(h => h.text.includes("Práctica") || h.text.includes("Exercises"));
 ---
 
 <Layout title={`${entry.data.title} - Curso Español`}>
-  <main class="min-h-screen bg-slate-50 py-12">
-    <div class="max-w-6xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-[1fr_250px] gap-8">
+  <main class="min-h-screen bg-slate-50 py-8">
+    {/* Layout Grid: Sidebar Izquierda (260px) - Contenido Derecha (Resto) */}
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-8 items-start">
       
-      {/* COLUMNA PRINCIPAL: LA LECCIÓN */}
-      <article class="bg-white shadow-xl rounded-lg overflow-hidden h-fit">
+      {/* --- COLUMNA IZQUIERDA: NAVEGACIÓN (Sticky) --- */}
+      <aside class="hidden lg:block sticky top-6 h-[calc(100vh-3rem)] overflow-y-auto pr-2 custom-scrollbar">
+        <nav class="space-y-6">
+          <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
+            <h3 class="font-bold text-brand-dark mb-3 uppercase text-xs tracking-wider border-b border-slate-100 pb-2">
+              Navegación
+            </h3>
+            <ul class="space-y-1 text-sm">
+              {headings.map((heading) => (
+                <li class={`
+                  ${heading.depth === 2 ? 'font-semibold mt-3' : 'text-slate-500 pl-3'}
+                  ${heading.text.includes('Práctica') ? 'text-brand-green font-bold' : ''}
+                `}>
+                  <a href={`#${heading.slug}`} 
+                     class="block py-1 hover:text-brand-blue transition-colors leading-tight">
+                    {heading.text}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div class="bg-brand-accent/10 rounded-lg p-4 border border-brand-accent/20">
+            <a href={import.meta.env.BASE_URL} class="flex items-center gap-2 text-sm font-semibold text-brand-dark hover:text-brand-blue transition-colors">
+              <span>←</span> Volver al curso
+            </a>
+          </div>
+        </nav>
+      </aside>
+
+      {/* --- COLUMNA DERECHA: CONTENIDO --- */}
+      <article class="bg-white shadow-sm rounded-lg overflow-hidden border border-slate-200">
         
-        <header class="relative bg-brand-dark text-white p-8 border-b-8 border-brand-green">
+        {/* Cabecera Compacta */}
+        <header class="relative bg-brand-dark text-white p-6 md:p-10 border-b-4 border-brand-green overflow-hidden">
           <div class="relative z-10">
-            <span class="inline-block bg-brand-yellow text-brand-dark text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-3">
-              {entry.data.unit}
-            </span>
-            <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight mb-2">
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <span class="inline-block bg-brand-green text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                {entry.data.unit}
+              </span>
+              {practiceHeading && (
+                <a href={`#${practiceHeading.slug}`} 
+                   class="inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider transition-colors cursor-pointer">
+                   ⚡ Ir a Ejercicios
+                </a>
+              )}
+            </div>
+            <h1 class="text-2xl md:text-4xl font-extrabold tracking-tight leading-tight">
               {entry.data.title}
             </h1>
           </div>
-          <div class="absolute top-0 right-0 w-32 h-32 bg-brand-blue opacity-10 rounded-bl-full"></div>
+          {/* Decoración sutil */}
+          <div class="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
         </header>
 
-        <div class="px-8 py-10 md:px-12">
-          {/* Aquí inyectamos el contenido Markdown con estilos */}
-          <div class="prose prose-lg max-w-none 
-            prose-headings:text-brand-green 
-            prose-h3:text-brand-blue 
-            prose-a:text-brand-red prose-a:no-underline hover:prose-a:underline
-            prose-strong:text-brand-brown
-            prose-li:marker:text-brand-yellow
-            interactive-zone"> {/* Clase clave para el script JS */}
-            
-            <Content />
-            
-          </div>
-
-          <div class="mt-12 pt-8 border-t border-gray-100">
-            <a href={import.meta.env.BASE_URL} class="inline-flex items-center text-brand-blue font-semibold hover:text-brand-dark transition-colors">
-              ← Volver al índice del curso
-            </a>
-          </div>
-        </div>
-      </article>
-
-      {/* COLUMNA LATERAL: TABLA DE CONTENIDOS FLOTANTE */}
-      <aside class="hidden lg:block">
-        <div class="sticky top-8 p-4 bg-white rounded-lg shadow-sm border border-slate-200">
-          <h3 class="font-bold text-brand-dark mb-4 uppercase text-xs tracking-wider">En esta lección</h3>
-          <ul class="space-y-2 text-sm">
-            {headings.map((heading) => (
-              <li class={`pl-${(heading.depth - 1) * 3}`}>
-                <a href={`#${heading.slug}`} class="text-slate-600 hover:text-brand-green transition-colors block py-1 border-l-2 border-transparent hover:border-brand-green pl-2">
-                  {heading.text}
+        {/* ÍNDICE SUPERIOR (Resumen Visual) */}
+        <div class="bg-slate-50 border-b border-slate-100 p-6">
+          <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">En esta lección:</p>
+          <ul class="columns-1 sm:columns-2 gap-x-8 space-y-2 text-sm">
+            {headings.filter(h => h.depth <= 2).map((heading) => (
+              <li class="break-inside-avoid">
+                <a href={`#${heading.slug}`} class="flex items-start gap-2 text-slate-700 hover:text-brand-blue group">
+                  <span class="text-brand-green/50 group-hover:text-brand-green">•</span>
+                  <span class="border-b border-transparent group-hover:border-brand-blue/30 leading-snug">
+                    {heading.text}
+                  </span>
                 </a>
               </li>
             ))}
           </ul>
         </div>
-      </aside>
+
+        {/* CONTENIDO PRINCIPAL */}
+        <div class="px-6 py-8 md:px-10">
+          {/* CAMBIOS TIPOGRÁFICOS: 
+              - 'prose' en vez de 'prose-lg' (texto más pequeño)
+              - 'prose-p:leading-relaxed' (menos separación vertical excesiva)
+              - 'max-w-none' (aprovecha el ancho) 
+          */}
+          <div class="prose prose-slate max-w-none 
+            prose-p:text-base prose-p:leading-7 prose-p:text-slate-700
+            prose-headings:text-brand-dark prose-headings:font-bold prose-headings:tracking-tight
+            prose-h2:text-2xl prose-h2:mt-10 prose-h2:pb-2 prose-h2:border-b prose-h2:border-slate-100
+            prose-h3:text-lg prose-h3:text-brand-blue prose-h3:mt-6
+            prose-a:text-brand-red prose-a:no-underline hover:prose-a:underline
+            prose-strong:text-brand-brown prose-strong:font-bold
+            prose-li:marker:text-brand-yellow
+            prose-table:text-sm
+            interactive-zone"> 
+            
+            <Content />
+            
+          </div>
+
+          <div class="mt-12 pt-8 border-t border-slate-100 text-center">
+            <a href={import.meta.env.BASE_URL} class="inline-flex items-center gap-2 text-brand-dark font-medium hover:text-brand-blue transition-colors bg-slate-50 px-4 py-2 rounded-full border border-slate-200 hover:border-brand-blue/30">
+              <span>←</span> Volver al índice del curso
+            </a>
+          </div>
+        </div>
+      </article>
 
     </div>
   </main>
 </Layout>
 
+<style>
+  /* Scrollbar personalizado para el sidebar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 20px;
+  }
+</style>
+
 <script>
-  // --- SCRIPT DE EJERCICIOS INTERACTIVOS ---
-  // Convierte automáticamente los <details> en ejercicios rellenables
+  // --- SCRIPT DE EJERCICIOS INTERACTIVOS (Autocorrección) ---
   document.addEventListener('astro:page-load', () => {
     initExercises();
   });
   
-  // Ejecutar también si no hay ViewTransitions
   initExercises();
 
   function initExercises() {
     const detailsElements = document.querySelectorAll('.interactive-zone details');
 
     detailsElements.forEach((details, index) => {
-      // 1. Extraer la respuesta correcta del interior del <details>
-      // Asumimos que la IA pone la respuesta dentro, limpia de etiquetas si es posible
       const summary = details.querySelector('summary');
       const correctAnswerText = details.innerText.replace(summary ? summary.innerText : '', '').trim();
       
-      // 2. Crear la interfaz del ejercicio
+      // Diseño mejorado de la caja de ejercicios
       const container = document.createElement('div');
-      container.className = "my-6 p-4 bg-slate-50 rounded-lg border border-slate-200";
+      container.className = "my-6 bg-white rounded-lg border-l-4 border-brand-blue shadow-sm p-5 ring-1 ring-slate-900/5";
       
       const inputId = `ex-${index}`;
+      
+      // Obtenemos la pregunta (que suele estar en negrita justo antes del details)
+      // Esto es un intento de mejorar la UX visual
+      let questionText = "Ejercicio Práctico";
+      const prevEl = details.previousElementSibling;
+      if (prevEl && (prevEl.tagName === 'STRONG' || prevEl.tagName === 'B' || prevEl.tagName === 'P')) {
+         // Opcional: Podríamos mover la pregunta dentro del container para que quede encapsulada
+      }
+
       container.innerHTML = `
-        <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-          <input type="text" id="${inputId}" placeholder="Escribe tu respuesta..." 
-            class="flex-1 px-4 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-brand-blue focus:border-brand-blue outline-none w-full sm:w-auto" />
-          <button id="btn-${index}" class="px-4 py-2 bg-brand-green text-white font-bold rounded hover:bg-opacity-90 transition-colors shadow-sm">
-            Comprobar
-          </button>
+        <div class="flex flex-col gap-3">
+          <label for="${inputId}" class="text-sm font-semibold text-slate-700 block uppercase tracking-wide text-[10px]">Tu respuesta:</label>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input type="text" id="${inputId}" placeholder="Escribe aquí..." 
+              class="flex-1 px-3 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue outline-none transition-all" />
+            <button id="btn-${index}" class="px-4 py-2 bg-brand-blue text-white text-sm font-bold rounded hover:bg-brand-dark transition-colors shadow-sm whitespace-nowrap">
+              Comprobar
+            </button>
+          </div>
+          <div id="feedback-${index}" class="hidden text-sm font-medium p-2 rounded bg-slate-50 border border-slate-100 mt-1"></div>
         </div>
-        <div id="feedback-${index}" class="mt-3 hidden text-sm font-bold"></div>
       `;
 
-      // 3. Reemplazar el <details> original (o esconderlo)
       details.parentNode?.insertBefore(container, details);
-      // Guardamos el details original oculto por si quieren "rendirse" y ver la solución
       details.style.display = 'none'; 
       
-      // Botón de ayuda para mostrar la solución original
       const helpBtn = document.createElement('button');
-      helpBtn.innerText = "Me rindo (Ver solución)";
-      helpBtn.className = "text-xs text-slate-400 mt-2 hover:text-brand-red underline";
-      helpBtn.onclick = () => { details.style.display = 'block'; helpBtn.style.display = 'none'; };
+      helpBtn.innerText = "Mostrar solución";
+      helpBtn.className = "text-[11px] text-slate-400 mt-2 hover:text-brand-red font-medium transition-colors";
+      helpBtn.onclick = () => { 
+        details.style.display = 'block'; 
+        details.open = true; 
+        helpBtn.style.display = 'none'; 
+      };
       container.appendChild(helpBtn);
 
-      // 4. Lógica de corrección
       const btn = container.querySelector(`#btn-${index}`);
       const input = container.querySelector(`#${inputId}`) as HTMLInputElement;
       const feedback = container.querySelector(`#feedback-${index}`);
+
+      // Permitir Enter para enviar
+      input?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') btn?.click();
+      });
 
       btn?.addEventListener('click', () => {
         if(!input || !feedback) return;
         
         const userAnswer = input.value.trim().toLowerCase();
-        // Limpiamos la respuesta correcta de puntuación básica para comparar
         const cleanCorrect = correctAnswerText.toLowerCase().replace(/[.,!¡?¿]/g, "").trim();
         const cleanUser = userAnswer.replace(/[.,!¡?¿]/g, "").trim();
 
         feedback.classList.remove('hidden');
+        feedback.classList.remove('text-green-700', 'bg-green-50', 'border-green-100', 'text-red-700', 'bg-red-50', 'border-red-100');
         
-        if (cleanUser === cleanCorrect || cleanUser.includes(cleanCorrect)) {
-          feedback.textContent = "¡Correcto! 🎉";
-          feedback.className = "mt-3 text-sm font-bold text-green-600";
-          input.classList.add("border-green-500", "bg-green-50");
+        if (cleanUser === cleanCorrect || (cleanCorrect.length > 3 && cleanUser.includes(cleanCorrect))) {
+          feedback.innerHTML = "¡Correcto! 🎉 <span class='block text-xs font-normal text-slate-500 mt-1'>Sigue así.</span>";
+          feedback.classList.add('text-green-700', 'bg-green-50', 'border-green-100');
+          input.classList.add("border-green-500", "ring-1", "ring-green-500");
+          input.classList.remove("border-red-300", "ring-red-300");
         } else {
-          feedback.textContent = "Casi... Inténtalo de nuevo.";
-          feedback.className = "mt-3 text-sm font-bold text-brand-red";
-          input.classList.add("border-red-300", "bg-red-50");
+          feedback.textContent = "Incorrecto. Inténtalo otra vez.";
+          feedback.classList.add('text-red-700', 'bg-red-50', 'border-red-100');
+          input.classList.add("border-red-300", "ring-1", "ring-red-300");
+          input.classList.remove("border-green-500", "ring-green-500");
         }
       });
     });
