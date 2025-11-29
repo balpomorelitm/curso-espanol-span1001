@@ -2,6 +2,8 @@
 title: "Números (1-10) / Numbers (1-10)"
 unit: "Unidad 0"
 slug: "numeros-1-10-numbers-1-10"
+exercise: true
+parentUnitSlug: "unidad-0"
 ---
 
 **1. Escribe en inglés el número: “Cinco”**

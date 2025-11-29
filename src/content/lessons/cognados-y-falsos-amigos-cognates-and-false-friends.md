@@ -2,6 +2,8 @@
 title: "Cognados y Falsos Amigos / Cognates and False Friends"
 unit: "Unidad 0"
 slug: "cognados-y-falsos-amigos-cognates-and-false-friends"
+exercise: true
+parentUnitSlug: "unidad-0"
 ---
 
 **1. Elige el cognado perfecto: ¿Cuál es la traducción correcta de "Chocolate" en español?**  

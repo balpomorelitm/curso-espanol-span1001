@@ -2,6 +2,8 @@
 title: "El Abecedario / The Alphabet"
 unit: "Unidad 0"
 slug: "el-abecedario-the-alphabet"
+exercise: true
+parentUnitSlug: "unidad-0"
 ---
 
 **1. Escribe la letra inicial que falta: _V__no 🍷**
