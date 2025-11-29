@@ -87,6 +87,7 @@ def fetch_ready_pages() -> List[LessonEntry]:
         
         entries.append(LessonEntry(
             page_id=page["id"], theme=theme, raw_content=raw_content,
+            
             unit=unit, action_type=action_type, slug=slug_value
         ))
     return entries
@@ -103,7 +104,7 @@ def generate_markdown_content(client: OpenAI, entry: LessonEntry) -> str:
     if entry.action_type == "Add Exercises":
         system_prompt = (
             "Eres un experto en didáctica de lenguas. Creas ejercicios para una web interactiva. "
-            "IMPORTANTE: Genera ejercicios usando el formato específico para el script de autocorrección."
+            "IMPORTANTE: Genera ejercicios usando el formato específico para el script de autocorrección. Muy importante, la comunicación con el alumno siempre va en inglés, aunque los ejercicios sean de lengua española."
         )
         user_prompt = (
             f"Tema: {entry.theme}\nContenido: {entry.raw_content}\n\n"
@@ -116,15 +117,26 @@ def generate_markdown_content(client: OpenAI, entry: LessonEntry) -> str:
             "**Traduce 'House':**\n"
             "<details><summary>Solución</summary>Casa</details>\n\n"
         )
-    else:
-        system_prompt = "Eres un profesor de español experto. Creas lecciones web divididas en secciones cortas y claras."
+ else:
+        system_prompt = (
+            "You are a world-class Spanish as a Foreign Language (ELE) teacher. "
+            "Your teaching style is fun, engaging, and highly visual (using emojis WHEN IT CAN HELP BUT NOT ALWAYS). 🚀 "
+            "You specialize in explaining Spanish concepts to English and Chinese speakers."
+        )
         user_prompt = (
-            f"Unidad: {entry.unit}\nTema: {entry.theme}\nNotas: {entry.raw_content}\n\n"
-            "Escribe una lección en Markdown muy estructurada.\n"
-            "- Usa subtítulos (##) frecuentes para romper el texto.\n"
-            "- Usa tablas para vocabulario.\n"
-            "- Mantén los párrafos cortos.\n"
-            "NO incluyas frontmatter."
+            f"Unit: {entry.unit}\n"
+            f"Topic: {entry.theme}\n"
+            f"Raw Notes: {entry.raw_content}\n\n"
+            "TASK: Create a high-quality, engaging web lesson in Markdown based on the notes.\n\n"
+            "CRITICAL RULES:\n"
+            "1. LANGUAGE: All explanations MUST be in ENGLISH. Only the examples are in Spanish.\n"
+            "2. TRANSLATIONS: For every Spanish vocabulary word or phrase, provide the ENGLISH and CHINESE (Simplified) translations. "
+            "Use Markdown tables for vocabulary: | Spanish | English | Chinese |.\n"
+            "3. TONE: Be fun and motivating! Use emojis (👋 🇪🇸 🌮) frequently to break up text and add vibe.\n"
+            "4. NO EXERCISES: Do NOT include quizzes, fill-in-the-blanks, or practice sections. This is purely for explanation and theory.\n"
+            "5. STRUCTURE: Use short paragraphs, clear H2 (##) subtitles, and bullet points. Avoid walls of text.\n"
+            "6. CONTENT: Expand on the raw notes. Explain *why* things happen (grammar/culture) simply.\n"
+            "7. NO METADATA: Do not include frontmatter (---) or H1 titles."
         )
 
     completion = client.chat.completions.create(
