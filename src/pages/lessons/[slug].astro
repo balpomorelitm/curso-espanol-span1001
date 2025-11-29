@@ -1,3 +1,436 @@
+---
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+
+// 1. Generar rutas
+export async function getStaticPaths() {
+  const lessons = await getCollection('lessons');
+  return lessons.map(entry => ({
+    params: { slug: entry.slug }, 
+    props: { entry },
+  }));
+}
+
+// 2. Obtener contenido y encabezados
+const { entry } = Astro.props;
+const { Content, headings } = await entry.render();
+
+// Encontrar si hay sección de práctica para el botón directo
+const practiceHeading = headings.find(h => h.text.includes("Práctica") || h.text.includes("Exercises"));
+---
+
+<Layout title={`${entry.data.title} - Curso Español`}>
+  <main class="min-h-screen bg-slate-50 py-8">
+    {/* Layout Grid: Sidebar Izquierda (260px) - Contenido Derecha (Resto) */}
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-8 items-start">
+      
+      {/* --- COLUMNA IZQUIERDA: NAVEGACIÓN (Sticky) --- */}
+      <aside class="hidden lg:block sticky top-6 h-[calc(100vh-3rem)] overflow-y-auto pr-2 custom-scrollbar">
+        <nav class="space-y-6">
+          <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
+            <h3 class="font-bold text-brand-dark mb-3 uppercase text-xs tracking-wider border-b border-slate-100 pb-2">
+              Navegación
+            </h3>
+            <ul class="space-y-1 text-sm">
+              {headings.map((heading) => (
+                <li class={`
+                  ${heading.depth === 2 ? 'font-semibold mt-3' : 'text-slate-500 pl-3'}
+                  ${heading.text.includes('Práctica') ? 'text-brand-green font-bold' : ''}
+                `}>
+                  <a href={`#${heading.slug}`} 
+                     class="block py-1 hover:text-brand-blue transition-colors leading-tight">
+                    {heading.text}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div class="bg-brand-accent/10 rounded-lg p-4 border border-brand-accent/20">
+            <a href={import.meta.env.BASE_URL} class="flex items-center gap-2 text-sm font-semibold text-brand-dark hover:text-brand-blue transition-colors">
+              <span>←</span> Volver al curso
+            </a>
+          </div>
+        </nav>
+      </aside>
+
+      {/* --- COLUMNA DERECHA: CONTENIDO --- */}
+      <article class="bg-white shadow-sm rounded-lg overflow-hidden border border-slate-200">
+        
+        {/* Cabecera Compacta */}
+        <header class="relative bg-brand-dark text-white p-6 md:p-10 border-b-4 border-brand-green overflow-hidden">
+          <div class="relative z-10">
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <span class="inline-block bg-brand-green text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                {entry.data.unit}
+              </span>
+              {practiceHeading && (
+                <a href={`#${practiceHeading.slug}`} 
+                   class="inline-flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider transition-colors cursor-pointer">
+                   ⚡ Ir a Ejercicios
+                </a>
+              )}
+            </div>
+            <h1 class="text-2xl md:text-4xl font-extrabold tracking-tight leading-tight">
+              {entry.data.title}
+            </h1>
+          </div>
+          {/* Decoración sutil */}
+          <div class="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+        </header>
+
+        {/* ÍNDICE SUPERIOR (Resumen Visual) */}
+        <div class="bg-slate-50 border-b border-slate-100 p-6">
+          <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">En esta lección:</p>
+          <ul class="columns-1 sm:columns-2 gap-x-8 space-y-2 text-sm">
+            {headings.filter(h => h.depth <= 2).map((heading) => (
+              <li class="break-inside-avoid">
+                <a href={`#${heading.slug}`} class="flex items-start gap-2 text-slate-700 hover:text-brand-blue group">
+                  <span class="text-brand-green/50 group-hover:text-brand-green">•</span>
+                  <span class="border-b border-transparent group-hover:border-brand-blue/30 leading-snug">
+                    {heading.text}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* CONTENIDO PRINCIPAL */}
+        <div class="px-6 py-8 md:px-10">
+          {/* CAMBIOS TIPOGRÁFICOS: 
+              - 'prose' en vez de 'prose-lg' (texto más pequeño)
+              - 'prose-p:leading-relaxed' (menos separación vertical excesiva)
+              - 'max-w-none' (aprovecha el ancho) 
+          */}
+          <div class="prose prose-slate max-w-none 
+            prose-p:text-base prose-p:leading-7 prose-p:text-slate-700
+            prose-headings:text-brand-dark prose-headings:font-bold prose-headings:tracking-tight
+            prose-h2:text-2xl prose-h2:mt-10 prose-h2:pb-2 prose-h2:border-b prose-h2:border-slate-100
+            prose-h3:text-lg prose-h3:text-brand-blue prose-h3:mt-6
+            prose-a:text-brand-red prose-a:no-underline hover:prose-a:underline
+            prose-strong:text-brand-brown prose-strong:font-bold
+            prose-li:marker:text-brand-yellow
+            prose-table:text-sm
+            interactive-zone"> 
+            
+            <Content />
+            
+          </div>
+
+          <div class="mt-12 pt-8 border-t border-slate-100 text-center">
+            <a href={import.meta.env.BASE_URL} class="inline-flex items-center gap-2 text-brand-dark font-medium hover:text-brand-blue transition-colors bg-slate-50 px-4 py-2 rounded-full border border-slate-200 hover:border-brand-blue/30">
+              <span>←</span> Volver al índice del curso
+            </a>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </main>
+</Layout>
+
+<style>
+  /* Scrollbar personalizado para el sidebar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 20px;
+  }
+</style>
+
+<script>
+  // --- SCRIPT DE EJERCICIOS INTERACTIVOS (Autocorrección) ---
+  document.addEventListener('astro:page-load', () => {
+    initExercises();
+  });
+  
+  initExercises();
+
+  function initExercises() {
+    const detailsElements = document.querySelectorAll('.interactive-zone details');
+
+    detailsElements.forEach((details, index) => {
+      const summary = details.querySelector('summary');
+      const correctAnswerText = details.innerText.replace(summary ? summary.innerText : '', '').trim();
+      
+      // Diseño mejorado de la caja de ejercicios
+      const container = document.createElement('div');
+      container.className = "my-6 bg-white rounded-lg border-l-4 border-brand-blue shadow-sm p-5 ring-1 ring-slate-900/5";
+      
+      const inputId = `ex-${index}`;
+      
+      // Obtenemos la pregunta (que suele estar en negrita justo antes del details)
+      // Esto es un intento de mejorar la UX visual
+      let questionText = "Ejercicio Práctico";
+      const prevEl = details.previousElementSibling;
+      if (prevEl && (prevEl.tagName === 'STRONG' || prevEl.tagName === 'B' || prevEl.tagName === 'P')) {
+         // Opcional: Podríamos mover la pregunta dentro del container para que quede encapsulada
+      }
+
+      container.innerHTML = `
+        <div class="flex flex-col gap-3">
+          <label for="${inputId}" class="text-sm font-semibold text-slate-700 block uppercase tracking-wide text-[10px]">Tu respuesta:</label>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input type="text" id="${inputId}" placeholder="Escribe aquí..." 
+              class="flex-1 px-3 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue outline-none transition-all" />
+            <button id="btn-${index}" class="px-4 py-2 bg-brand-blue text-white text-sm font-bold rounded hover:bg-brand-dark transition-colors shadow-sm whitespace-nowrap">
+              Comprobar
+            </button>
+          </div>
+          <div id="feedback-${index}" class="hidden text-sm font-medium p-2 rounded bg-slate-50 border border-slate-100 mt-1"></div>
+        </div>
+      `;
+
+      details.parentNode?.insertBefore(container, details);
+      details.style.display = 'none'; 
+      
+      const helpBtn = document.createElement('button');
+      helpBtn.innerText = "Mostrar solución";
+      helpBtn.className = "text-[11px] text-slate-400 mt-2 hover:text-brand-red font-medium transition-colors";
+      helpBtn.onclick = () => { 
+        details.style.display = 'block'; 
+        details.open = true; 
+        helpBtn.style.display = 'none'; 
+      };
+      container.appendChild(helpBtn);
+
+      const btn = container.querySelector(`#btn-${index}`);
+      const input = container.querySelector(`#${inputId}`) as HTMLInputElement;
+      const feedback = container.querySelector(`#feedback-${index}`);
+
+      // Permitir Enter para enviar
+      input?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') btn?.click();
+      });
+
+      btn?.addEventListener('click', () => {
+        if(!input || !feedback) return;
+        
+        const userAnswer = input.value.trim().toLowerCase();
+        const cleanCorrect = correctAnswerText.toLowerCase().replace(/[.,!¡?¿]/g, "").trim();
+        const cleanUser = userAnswer.replace(/[.,!¡?¿]/g, "").trim();
+
+        feedback.classList.remove('hidden');
+        feedback.classList.remove('text-green-700', 'bg-green-50', 'border-green-100', 'text-red-700', 'bg-red-50', 'border-red-100');
+        
+        if (cleanUser === cleanCorrect || (cleanCorrect.length > 3 && cleanUser.includes(cleanCorrect))) {
+          feedback.innerHTML = "¡Correcto! 🎉 <span class='block text-xs font-normal text-slate-500 mt-1'>Sigue así.</span>";
+          feedback.classList.add('text-green-700', 'bg-green-50', 'border-green-100');
+          input.classList.add("border-green-500", "ring-1", "ring-green-500");
+          input.classList.remove("border-red-300", "ring-red-300");
+        } else {
+          feedback.textContent = "Incorrecto. Inténtalo otra vez.";
+          feedback.classList.add('text-red-700', 'bg-red-50', 'border-red-100');
+          input.classList.add("border-red-300", "ring-1", "ring-red-300");
+          input.classList.remove("border-green-500", "ring-green-500");
+        }
+      });
+    });
+  }
+</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    renderAdvancedExercises();
+  });
+  
+  renderAdvancedExercises();
+
+  function renderAdvancedExercises() {
+    const dataBlocks = document.querySelectorAll('.exercise-data');
+    
+    dataBlocks.forEach((block, index) => {
+      try {
+        const data = JSON.parse(block.textContent);
+        const container = document.createElement('div');
+        container.id = `app-ex-${index}`;
+        container.className = "my-10 p-6 bg-white rounded-xl shadow-lg border-t-4 border-brand-blue";
+        
+        // Inicializar el ejercicio con el Set A
+        mountExercise(container, data, 'set_a');
+        
+        block.parentNode.insertBefore(container, block);
+      } catch (e) {
+        console.error("Error parsing exercise data", e);
+      }
+    });
+  }
+
+  function mountExercise(container, data, activeSetKey) {
+    const items = data[activeSetKey];
+    const isSetA = activeSetKey === 'set_a';
+    
+    // Header
+    let html = `
+      <div class="flex justify-between items-start mb-6">
+        <div>
+          <h3 class="text-xl font-bold text-brand-dark flex items-center gap-2">
+            <span class="material-symbols-outlined text-brand-blue">fitness_center</span>
+            ${data.title}
+          </h3>
+          <p class="text-slate-500 text-sm mt-1">${data.instruction}</p>
+        </div>
+        <button onclick="switchSet('${container.id}', '${isSetA ? 'set_b' : 'set_a'}')" 
+          class="text-xs font-bold px-3 py-1 bg-brand-yellow/20 text-brand-brown rounded-full hover:bg-brand-yellow/40 transition">
+          ${isSetA ? '🔄 Probar Versión B' : '↩️ Volver a Versión A'}
+        </button>
+      </div>
+    `;
+
+    // Renderizar según tipo
+    if (data.type === 'fill_gaps') {
+      html += renderFillGaps(items, container.id);
+    } else if (data.type === 'matching') {
+      html += renderMatching(items, container.id);
+    } else if (data.type === 'flashcards') {
+      html += renderFlashcards(items, container.id);
+    }
+
+    container.innerHTML = html;
+    
+    // Re-attach events (necesario porque usamos innerHTML)
+    // Guardamos los datos en el DOM para recuperarlos al cambiar de set
+    container.dataset.jsonData = JSON.stringify(data);
+  }
+
+  // --- COMPONENTES DE EJERCICIOS ---
+
+  // 1. FILL IN THE GAPS (Huecos)
+  function renderFillGaps(items, id) {
+    let html = `<div class="space-y-4">`;
+    items.forEach((item, i) => {
+      // Reemplazar '___' con input
+      const parts = item.q.split('___');
+      const inputHtml = `<input type="text" data-ans="${item.a}" class="mx-2 px-2 py-1 border-b-2 border-slate-300 focus:border-brand-blue outline-none bg-slate-50 text-center font-bold w-32" placeholder="?">`;
+      
+      html += `
+        <div class="p-3 bg-slate-50 rounded-lg flex items-center gap-3 exercise-row">
+          ${item.icon ? `<span class="material-symbols-outlined text-slate-400">${item.icon}</span>` : ''}
+          <p class="leading-loose text-lg text-slate-700">
+            ${parts.join(inputHtml)}
+          </p>
+          <span class="feedback-icon material-symbols-outlined opacity-0 ml-auto">check_circle</span>
+        </div>
+      `;
+    });
+    html += `
+      <div class="mt-6 text-center">
+        <button onclick="checkFillGaps('${id}')" class="px-6 py-3 bg-brand-green text-white font-bold rounded-lg shadow-md hover:translate-y-[-2px] transition">
+          ✅ Corregir Todo
+        </button>
+      </div>
+    </div>`;
+    return html;
+  }
+
+  // 2. MATCHING (Relacionar Columnas - Estilo Grid Clickable)
+  function renderMatching(items, id) {
+    // Mezclar respuestas
+    const answers = [...items].sort(() => Math.random() - 0.5);
+    
+    let html = `<div class="grid grid-cols-2 gap-8 matching-game" id="${id}-match">`;
+    
+    // Columna Izquierda (Preguntas)
+    html += `<div class="space-y-3">`;
+    items.forEach((item, i) => {
+      html += `
+        <button onclick="selectMatch('${id}', 'q', ${i})" class="match-card q-card w-full text-left p-4 bg-white border-2 border-slate-200 rounded-xl hover:border-brand-blue transition relative" data-idx="${i}">
+          <div class="font-bold text-brand-dark">${item.q}</div>
+        </button>
+      `;
+    });
+    html += `</div>`;
+
+    // Columna Derecha (Respuestas)
+    html += `<div class="space-y-3">`;
+    answers.forEach((item, i) => {
+      // Buscamos el índice original para saber cuál es su pareja
+      const originalIndex = items.findIndex(x => x.a === item.a);
+      html += `
+        <button onclick="selectMatch('${id}', 'a', ${originalIndex})" class="match-card a-card w-full text-left p-4 bg-slate-50 border-2 border-slate-200 rounded-xl hover:border-brand-green transition" data-idx="${originalIndex}">
+          ${item.icon ? `<span class="material-symbols-outlined text-2xl mb-1 block text-brand-primary">${item.icon}</span>` : ''}
+          <div class="text-slate-600">${item.a}</div>
+        </button>
+      `;
+    });
+    html += `</div></div>`;
+    return html;
+  }
+
+  // --- LÓGICA GLOBAL (Window functions para onclicks) ---
+
+  window.switchSet = (containerId, setKey) => {
+    const container = document.getElementById(containerId);
+    const data = JSON.parse(container.dataset.jsonData);
+    mountExercise(container, data, setKey);
+  };
+
+  window.checkFillGaps = (containerId) => {
+    const container = document.getElementById(containerId);
+    const inputs = container.querySelectorAll('input');
+    
+    inputs.forEach(input => {
+      const userVal = input.value.trim().toLowerCase();
+      const correctVal = input.dataset.ans.toLowerCase();
+      const row = input.closest('.exercise-row');
+      const icon = row.querySelector('.feedback-icon');
+      
+      if(userVal === correctVal) {
+        input.classList.add('text-green-600', 'border-green-500');
+        icon.innerText = 'check_circle';
+        icon.className = 'feedback-icon material-symbols-outlined text-green-500 opacity-100 ml-auto transition';
+      } else {
+        input.classList.add('text-red-500', 'border-red-300');
+        icon.innerText = 'cancel';
+        icon.className = 'feedback-icon material-symbols-outlined text-red-400 opacity-100 ml-auto transition';
+      }
+    });
+  };
+
+  // Estado simple para el juego de Matching
+  let selectedQ = null;
+  
+  window.selectMatch = (containerId, type, idx) => {
+    const container = document.getElementById(containerId);
+    
+    if (type === 'q') {
+      // Limpiar selección previa
+      container.querySelectorAll('.q-card').forEach(el => el.classList.remove('border-brand-blue', 'bg-blue-50'));
+      // Seleccionar actual
+      const card = container.querySelector(`.q-card[data-idx="${idx}"]`);
+      card.classList.add('border-brand-blue', 'bg-blue-50');
+      selectedQ = idx;
+    } 
+    
+    if (type === 'a') {
+      if (selectedQ === null) return; // No hay pregunta seleccionada
+      
+      const cardA = container.querySelector(`.a-card[data-idx="${idx}"]`);
+      const cardQ = container.querySelector(`.q-card[data-idx="${selectedQ}"]`);
+      
+      if (selectedQ === idx) {
+        // MATCH CORRECTO
+        cardQ.classList.replace('border-brand-blue', 'border-green-500');
+        cardQ.classList.add('bg-green-50', 'opacity-50', 'pointer-events-none');
+        cardA.classList.replace('border-slate-200', 'border-green-500');
+        cardA.classList.add('bg-green-50', 'opacity-50', 'pointer-events-none');
+        selectedQ = null;
+      } else {
+        // MATCH INCORRECTO (Shake effect)
+        cardA.classList.add('animate-pulse', 'border-red-400');
+        setTimeout(() => cardA.classList.remove('animate-pulse', 'border-red-400'), 500);
+      }
+    }
+  };
+</script>
+
 <script>
   document.addEventListener('astro:page-load', () => {
     renderAdvancedExercises();
