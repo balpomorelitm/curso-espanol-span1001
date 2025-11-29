@@ -3,6 +3,8 @@ import { getCollection } from 'astro:content';
 import Layout from '../layouts/Layout.astro';
 
 const lessons = await getCollection('lessons');
+
+// 1. Agrupar por unidades
 const units = lessons.reduce((map, lesson) => {
   const unit = lesson.data.unit ?? 'Unidad general';
   if (!map.has(unit)) map.set(unit, []);
@@ -10,57 +12,99 @@ const units = lessons.reduce((map, lesson) => {
   return map;
 }, new Map<string, typeof lessons[number][]>());
 
-const sortedUnits = Array.from(units.entries()).sort(([a], [b]) => a.localeCompare(b, 'es'));
+// 2. Ordenar Unidades (0, 1, 2...)
+const sortedUnits = Array.from(units.entries()).sort(([a], [b]) => a.localeCompare(b, 'es', { numeric: true }));
+
+// 3. ORDENAR LECCIONES DENTRO DE CADA UNIDAD (Lógica nueva)
+const priority = ['saludos', 'abecedario', 'letras', 'números', 'preguntas', 'cognados'];
+
+sortedUnits.forEach(([unit, unitLessons]) => {
+  unitLessons.sort((a, b) => {
+    const titleA = a.data.title.toLowerCase();
+    const titleB = b.data.title.toLowerCase();
+    
+    const idxA = priority.findIndex(p => titleA.includes(p));
+    const idxB = priority.findIndex(p => titleB.includes(p));
+    
+    // Si ambos están en la lista de prioridad, usar ese orden
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    // Si solo A está, va antes
+    if (idxA !== -1) return -1;
+    // Si solo B está, va antes
+    if (idxB !== -1) return 1;
+    
+    // Si ninguno está, orden alfabético normal
+    return titleA.localeCompare(titleB);
+  });
+});
 ---
 
 <Layout title="Panel de lecciones">
-  <div class="space-y-6">
-    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div class="space-y-1">
-        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">Visión general</p>
-        <h2 class="text-3xl font-bold text-slate-900">Progreso del curso</h2>
-        <p class="text-slate-600">Explora las lecciones generadas automáticamente y sigue tu avance por unidad.</p>
+  <div class="space-y-8">
+    
+    {/* Cabecera del Dashboard */}
+    <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between border-b border-gray-200 pb-6">
+      <div class="space-y-2">
+        <p class="text-xs font-bold uppercase tracking-[0.2em] text-brand-green">Visión general</p>
+        <h2 class="text-4xl font-extrabold text-brand-dark tracking-tight">Progreso del curso</h2>
+        <p class="text-slate-600 max-w-lg">Explora las lecciones generadas automáticamente y sigue tu avance por unidad.</p>
       </div>
-      <div class="flex flex-wrap gap-2 text-sm text-slate-600">
-        <span class="rounded-full bg-sky-50 px-3 py-1 font-semibold text-sky-700">{lessons.length} lecciones</span>
-        <span class="rounded-full bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">{sortedUnits.length} unidades</span>
+      <div class="flex gap-3 text-sm font-medium">
+        <span class="flex items-center gap-2 rounded-full bg-brand-blue/10 px-4 py-1.5 text-brand-blue">
+          <span class="block h-2 w-2 rounded-full bg-brand-blue"></span>
+          {lessons.length} lecciones
+        </span>
+        <span class="flex items-center gap-2 rounded-full bg-brand-green/10 px-4 py-1.5 text-brand-green">
+          <span class="block h-2 w-2 rounded-full bg-brand-green"></span>
+          {sortedUnits.length} unidades
+        </span>
       </div>
     </div>
 
-    <div class="grid gap-6 md:grid-cols-2">
+    {/* Rejilla de Unidades */}
+    <div class="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
       {sortedUnits.length === 0 && (
-        <div class="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-slate-500">
-          Aún no hay lecciones. Ejecuta la automatización para generar el contenido inicial.
+        <div class="col-span-full rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-12 text-center">
+          <p class="text-slate-500 mb-2">Aún no hay lecciones.</p>
+          <p class="text-sm text-slate-400">Ejecuta la automatización en GitHub para generar el contenido inicial.</p>
         </div>
       )}
 
       {sortedUnits.map(([unit, unitLessons]) => (
-        <article class="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white/90 p-5 shadow-sm ring-1 ring-slate-100">
-          <header class="flex items-center justify-between">
+        <article class="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+          
+          {/* Cabecera de la Tarjeta */}
+          <header class="border-b border-slate-100 bg-slate-50/50 p-5 flex items-center justify-between">
             <div>
-              <p class="text-xs font-semibold uppercase tracking-wide text-sky-600">Unidad</p>
-              <h3 class="text-xl font-bold text-slate-900">{unit}</h3>
+              <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Módulo</p>
+              <h3 class="text-lg font-bold text-brand-dark">{unit}</h3>
             </div>
-            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{unitLessons.length} lecciones</span>
+            <span class="rounded-full bg-white border border-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-600">
+              {unitLessons.length}
+            </span>
           </header>
 
-          <ol class="space-y-3 text-sm text-slate-700">
-            {unitLessons.map((lesson, index) => (
-              <li class="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                <span class="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-xs font-bold text-sky-700">
-                  {index + 1}
-                </span>
-                <div class="flex flex-1 flex-col">
-                  {/* Añadimos la base URL al enlace dinámico */}
-                  <a class="font-semibold text-slate-900 hover:text-sky-700" 
-                     href={`${import.meta.env.BASE_URL}/lessons/${lesson.slug}/`}>
-                    {lesson.data.title}
+          {/* Lista de Lecciones */}
+          <div class="p-2">
+            <ol class="space-y-1">
+              {unitLessons.map((lesson, index) => (
+                <li>
+                  <a href={`${import.meta.env.BASE_URL}/lessons/${lesson.slug}/`} 
+                     class="group flex items-start gap-3 rounded-lg p-3 hover:bg-slate-50 transition-colors">
+                    <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-blue/10 text-[10px] font-bold text-brand-blue group-hover:bg-brand-blue group-hover:text-white transition-colors">
+                      {index + 1}
+                    </span>
+                    <div class="flex flex-col">
+                      <span class="text-sm font-semibold text-slate-700 group-hover:text-brand-blue transition-colors">
+                        {lesson.data.title}
+                      </span>
+                    </div>
                   </a>
-                  {lesson.data.unit && <p class="text-xs text-slate-500">{lesson.data.unit}</p>}
-                </div>
-              </li>
-            ))}
-          </ol>
+                </li>
+              ))}
+            </ol>
+          </div>
+          
         </article>
       ))}
     </div>
