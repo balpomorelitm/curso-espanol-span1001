@@ -87,7 +87,6 @@ def fetch_ready_pages() -> List[LessonEntry]:
         
         entries.append(LessonEntry(
             page_id=page["id"], theme=theme, raw_content=raw_content,
-            
             unit=unit, action_type=action_type, slug=slug_value
         ))
     return entries
@@ -100,11 +99,11 @@ def update_notion_status(page_ids: List[str]) -> None:
         requests.patch(url, json={"properties": {"Status": {"status": {"name": "In Review"}}}}, headers=headers)
 
 def generate_markdown_content(client: OpenAI, entry: LessonEntry) -> str:
-    # Prompt mejorado para ejercicios interactivos
+    # --- MODO 1: ENTRENADOR (Solo Ejercicios) ---
     if entry.action_type == "Add Exercises":
         system_prompt = (
             "Eres un experto en didáctica de lenguas. Creas ejercicios para una web interactiva. "
-            "IMPORTANTE: Genera ejercicios usando el formato específico para el script de autocorrección. Muy importante, la comunicación con el alumno siempre va en inglés, aunque los ejercicios sean de lengua española."
+            "IMPORTANTE: Genera ejercicios usando el formato específico para el script de autocorrección."
         )
         user_prompt = (
             f"Tema: {entry.theme}\nContenido: {entry.raw_content}\n\n"
@@ -117,10 +116,12 @@ def generate_markdown_content(client: OpenAI, entry: LessonEntry) -> str:
             "**Traduce 'House':**\n"
             "<details><summary>Solución</summary>Casa</details>\n\n"
         )
- else:
+
+    # --- MODO 2: PROFESOR ESTRELLA (Lección Teórica) ---
+    else:
         system_prompt = (
             "You are a world-class Spanish as a Foreign Language (ELE) teacher. "
-            "Your teaching style is fun, engaging, and highly visual (using emojis WHEN IT CAN HELP BUT NOT ALWAYS). 🚀 "
+            "Your teaching style is fun, engaging, and highly visual (using emojis). 🚀 "
             "You specialize in explaining Spanish concepts to English and Chinese speakers."
         )
         user_prompt = (
