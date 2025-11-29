@@ -5,8 +5,6 @@ const lessons = defineCollection({
   schema: z.object({
     title: z.string(),
     unit: z.string().optional(),
-    exercise: z.boolean().default(false),
-    parentUnitSlug: z.string().optional(),
   }),
 });
 
