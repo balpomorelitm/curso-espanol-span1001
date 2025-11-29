@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import subprocess
 import requests
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -98,7 +99,7 @@ def update_notion_status(page_ids: List[str]) -> None:
         url = f"https://api.notion.com/v1/pages/{page_id}"
         requests.patch(url, json={"properties": {"Status": {"status": {"name": "In Review"}}}}, headers=headers)
 
- def generate_markdown_content(client: OpenAI, entry: LessonEntry) -> str:
+def generate_markdown_content(client: OpenAI, entry: LessonEntry) -> str:
     # --- MODO 1: ENTRENADOR DINÁMICO (3 EJERCICIOS VARIADOS) ---
     if entry.action_type == "Add Exercises":
         system_prompt = (
@@ -118,7 +119,8 @@ def update_notion_status(page_ids: List[str]) -> None:
             "- If it's a Reading/Context topic -> Use 'multiple_choice' or 'fill_gaps'.\n"
             "- If it's Vocabulary -> Use 'flashcards' or 'matching'.\n"
             "- 'set_a': 6-10 items per exercise.\n"
-            "- 'set_b': 6-10 EXTRA items for regeneration.\n\n"
+            "- 'set_b': 6-10 EXTRA items for regeneration.\n"
+            "- Use Google Material Symbols in the 'icon' field if needed.\n\n"
             "JSON STRUCTURE:\n"
             "[\n"
             "  {\n"
@@ -143,6 +145,7 @@ def update_notion_status(page_ids: List[str]) -> None:
         
         content = completion.choices[0].message.content.strip()
         if content.startswith("```json"): content = content.replace("```json", "").replace("```", "")
+        if content.startswith("```"): content = content.replace("```", "")
         
         try:
             exercises = json.loads(content)
@@ -153,26 +156,30 @@ def update_notion_status(page_ids: List[str]) -> None:
             return markdown_output
             
         except json.JSONDecodeError:
-            return "\n\n> Error generando ejercicios."
+            print("Error decodificando JSON de ejercicios.")
+            return "\n\n> Error generando ejercicios. Por favor inténtalo de nuevo."
 
     # --- MODO 2: PROFESOR ESTRELLA (TEORÍA) ---
     else:
-        # (El resto del código para teoría se mantiene igual que antes...)
         system_prompt = (
             "You are a world-class Spanish as a Foreign Language (ELE) teacher. "
-            "Your teaching style is fun, engaging, and highly visual (using emojis). 🚀 "
+            "Your teaching style is fun, engaging, and highly visual  "
             "You specialize in explaining Spanish concepts to English and Chinese speakers."
         )
         user_prompt = (
-            f"Unit: {entry.unit}\nTopic: {entry.theme}\nRaw Notes: {entry.raw_content}\n\n"
+            f"Unit: {entry.unit}\n"
+            f"Topic: {entry.theme}\n"
+            f"Raw Notes: {entry.raw_content}\n\n"
             "TASK: Create a high-quality, engaging web lesson in Markdown based on the notes.\n\n"
             "CRITICAL RULES:\n"
             "1. LANGUAGE: All explanations MUST be in ENGLISH. Only the examples are in Spanish.\n"
-            "2. TRANSLATIONS: For every Spanish vocabulary word or phrase, provide the ENGLISH and CHINESE (Simplified) translations.\n"
-            "3. TONE: Be fun and motivating! Use emojis ONLY SOMETIMES NOW ALWAYS\n"
-            "4. NO EXERCISES: Do NOT include quizzes or practice sections in the text.\n"
-            "5. STRUCTURE: Use short paragraphs and H2 subtitles.\n"
-            "6. NO METADATA."
+            "2. TRANSLATIONS: For every Spanish vocabulary word or phrase, provide the ENGLISH and CHINESE (Simplified) translations. "
+            "Use Markdown tables for vocabulary: | Spanish | English | Chinese |.\n"
+            "3. TONE: Be fun and motivating! ONLY SOMETIMES use emojis\n"
+            "4. NO EXERCISES HERE: Do NOT include quizzes or practice sections in the text. (Exercises are added separately).\n"
+            "5. STRUCTURE: Use short paragraphs, clear H2 (##) subtitles, and bullet points. Avoid walls of text.\n"
+            "6. CONTENT: Expand on the raw notes. Explain *why* things happen (grammar/culture) simply.\n"
+            "7. NO METADATA: Do not include frontmatter (---) or H1 titles."
         )
 
         completion = client.chat.completions.create(
@@ -214,21 +221,28 @@ def main():
         content = generate_markdown_content(client, entry)
         path = CONTENT_DIR / f"{entry.slug}.md"
         
+        # LÓGICA DE APPEND: Si es 'Add Exercises' y el archivo existe, PEGAMOS al final
         if entry.action_type == "Add Exercises" and path.exists():
+            print(f"   -> Añadiendo pack de ejercicios a {entry.slug}")
             with path.open("a", encoding="utf-8") as f:
-                f.write(f"\n\n---\n\n## 🏋️ Práctica Interactiva\n\n{content}")
-        else:
+                f.write(content)
+        
+        # LÓGICA DE CREACIÓN: Si es 'Create Lesson', SOBRESCRIBIMOS
+        elif entry.action_type == "Create Lesson":
+            print(f"   -> Creando lección nueva: {entry.slug}")
             frontmatter = f"---\ntitle: \"{entry.theme}\"\nunit: \"{entry.unit}\"\nslug: \"{entry.slug}\"\n---\n\n"
             path.write_text(frontmatter + content, encoding="utf-8")
+        
+        else:
+            print(f"   ⚠️ Saltando: El archivo no existe y la acción es 'Add Exercises'.")
+            continue
         
         processed.append(entry.page_id)
 
     if processed: update_notion_status(processed)
     
     if subprocess.check_output(["git", "status", "--porcelain"]).strip():
-        git_ops(repo, "New Content (Split Lessons)", "Generated individual lessons + Interactive exercises.")
+        git_ops(repo, "New Content Update", "Generated lessons or added varied exercises.")
 
 if __name__ == "__main__":
     main()
-    
-   
